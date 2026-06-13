@@ -1,6 +1,4 @@
-
 const int pressurePin = A7;
-
 
 const float sensorMaxPsi = 150.0; 
 const float sensorMinPsi = 0.0;   
