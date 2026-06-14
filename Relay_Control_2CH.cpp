@@ -1,5 +1,5 @@
-const int relayCh1Pin = 2;
-const int relayCh2Pin = 3;
+const int relayCh1Pin = 3;
+const int relayCh2Pin = 4;
 
 const int RELAY_ON = LOW;
 const int RELAY_OFF = HIGH;
