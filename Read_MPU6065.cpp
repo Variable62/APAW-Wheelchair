@@ -1,10 +1,7 @@
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 #include <Wire.h>
-
-
 Adafruit_MPU6050 mpu;
-
 
 unsigned long previousMillis = 0;
 const long interval = 100; 
