@@ -13,7 +13,7 @@ const long interval = 2000;
 void setup() {
   
   Serial.begin(115200);
-  while (!){
+  while (!Serial){
     ;
   }
   pinMode(relayCh1Pin, OUTPUT);
