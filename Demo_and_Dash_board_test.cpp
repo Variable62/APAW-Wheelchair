@@ -1,7 +1,5 @@
-// ส่วนดึง Library ของระบบ Cloud 
 #include "thingProperties.h"
 
-// ส่วนดึง Library เซนเซอร์ฮาร์ดแวร์
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 #include <Wire.h>
@@ -157,7 +155,7 @@ void setup() {
 }
 
 void loop() {
-    // อัปเดตและซิงค์ข้อมูลกับคลาวด์
+    
     ArduinoCloud.update();
     
     unsigned long currentMillis = millis();
@@ -170,7 +168,6 @@ void loop() {
         ReadMPU6050();
         TrackSittingTime();
 
-        // ลอจิก State Machine
         if (maxFsrValue > 800 && sittingDurationMinutes >= 120) {
             if (CurrentState != StateDanger) {
                 CurrentState = StateDanger;
@@ -250,7 +247,6 @@ void loop() {
     }
 }
 
-// ฟังก์ชันสแตนด์บายของคลาวด์ ปล่อยว่างไว้
 void onLedNormalChange() {}
 void onLedWarningChange() {}
 void onLedDangerChange() {}
