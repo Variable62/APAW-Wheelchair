@@ -127,13 +127,11 @@ void setup() {
     Serial.begin(115200);
     delay(1500); 
 
-    // เริ่มต้นระบบ Cloud
     initProperties();
     ArduinoCloud.begin(ArduinoIoTPreferredConnection);
     setDebugMessageLevel(2);
     ArduinoCloud.printDebugInfo();
 
-    // เริ่มต้นพินฮาร์ดแวร์
     pinMode(Pressure_Sensor, INPUT);
     pinMode(MUX_SIG, INPUT);        
     pinMode(MUX_C0, OUTPUT);
