@@ -6,10 +6,10 @@ Adafruit_MPU6050 mpu;
 
 //--------------------Assign Pins--------------------
 const int MUX_SIG            = A0;   
-const int MUX_C0             = 8;    
-const int MUX_C1             = 9;   
-const int MUX_C2             = 10;  
-const int MUX_C3             = 11;  
+const int MUX_S0             = 8;    
+const int MUX_S1             = 9;   
+const int MUX_S2             = 10;  
+const int MUX_S3             = 11;  
 const int Pressure_Sensor    = A2;   
 const int RelayCh1_Airpump   = 3;    
 const int RelayCh1_Valve     = 4;   
@@ -50,10 +50,10 @@ enum SystemState {
 SystemState CurrentState = StateIdle; 
 
 void SelectMUXCh(int CH){
-    digitalWrite(MUX_C0 , (CH & 1));
-    digitalWrite(MUX_C1 , (CH & 2));
-    digitalWrite(MUX_C2 , (CH & 4));
-    digitalWrite(MUX_C3 , (CH & 8));
+    digitalWrite(MUX_S0 , (CH & 1));
+    digitalWrite(MUX_S1 , (CH & 2));
+    digitalWrite(MUX_S2 , (CH & 4));
+    digitalWrite(MUX_S3 , (CH & 8));
     delayMicroseconds(20); 
 }
 
@@ -127,10 +127,10 @@ void setup() {
 
     pinMode(Pressure_Sensor, INPUT);
     pinMode(MUX_SIG, INPUT);        
-    pinMode(MUX_C0, OUTPUT);
-    pinMode(MUX_C1, OUTPUT);
-    pinMode(MUX_C2, OUTPUT);
-    pinMode(MUX_C3, OUTPUT);    
+    pinMode(MUX_S0, OUTPUT);
+    pinMode(MUX_S1, OUTPUT);
+    pinMode(MUX_S2, OUTPUT);
+    pinMode(MUX_S3, OUTPUT);    
     pinMode(RelayCh1_Airpump , OUTPUT);
     pinMode(RelayCh1_Valve , OUTPUT);    
     pinMode(Buzzer, OUTPUT);
