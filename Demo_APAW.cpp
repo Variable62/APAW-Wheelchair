@@ -4,7 +4,6 @@
 
 Adafruit_MPU6050 mpu;
 
-//--------------------Assign Pins--------------------
 const int MUX_SIG            = A0;   
 const int MUX_S0             = 8;    
 const int MUX_S1             = 9;   
@@ -15,8 +14,7 @@ const int RelayCh1_Airpump   = 3;
 const int RelayCh1_Valve     = 4;   
 const int Buzzer             = 2;    
 
-//---------------Limit Pressure wait raw data
-const float PressureMaxPsi   = 150.0;
+const float PressureMaxPsi   = 5.0;   
 const float PressureMinPsi   = 0.0;
 const int adcMin             = 102;
 const int adcMax             = 921; 
@@ -36,7 +34,6 @@ const long      interval        = 100;
 unsigned long   buzzerMillis    = 0;
 bool            buzzerState     = false;
 
-// ตัวแปรควบคุมเวลาสลับการทำงานใน StateDanger แบบไม่หน่วงบอร์ด
 unsigned long   dangerActionMillis = 0;
 int             dangerStep         = 0; 
 
@@ -82,7 +79,7 @@ void ReadMPU6050(){
 }
 
 void TrackSittingTime(){
-    if (maxFsrValue > 200) { // Magic num.
+    if (maxFsrValue > 200) { 
         if (!Siting) {
             sittingStartTime = millis(); 
             Siting = true;
@@ -195,11 +192,10 @@ void loop() {
 
             case StateWarning:
                 Serial.println("[STATUS]: WARNING");
-                // Magic number nakub
-                if (pressurePsi < 30.0) { 
+                if (pressurePsi < 1.0) { 
                     digitalWrite(RelayCh1_Airpump, LOW); 
                 } 
-                else if (pressurePsi >= 40.0) {
+                else if (pressurePsi >= 1.4) {
                     digitalWrite(RelayCh1_Airpump, HIGH); 
                 }
                 digitalWrite(RelayCh1_Valve, HIGH); 
@@ -209,20 +205,19 @@ void loop() {
                 Serial.println("[STATUS]: DANGER");
                 
                 if (dangerStep == 0) {
-
                     digitalWrite(RelayCh1_Valve, LOW);   
                     digitalWrite(RelayCh1_Airpump, HIGH); 
                     
-                    if (millis() - dangerActionMillis >= 5000 || pressurePsi <= 15.0) {
+                    if (millis() - dangerActionMillis >= 5000 || pressurePsi <= 0.5) {
                         dangerStep = 1; 
-                        dangerActionMillis = millis(); // 
+                        dangerActionMillis = millis(); 
                     }
                 } 
                 else if (dangerStep == 1) {
                     digitalWrite(RelayCh1_Valve, HIGH);   
                     digitalWrite(RelayCh1_Airpump, LOW);  
                     
-                    if (pressurePsi >= 35.0) {
+                    if (pressurePsi >= 1.3) {
                         dangerStep = 0; 
                         dangerActionMillis = millis();
                     }
