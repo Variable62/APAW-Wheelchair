@@ -84,6 +84,29 @@ void allsensor_off(){
     digitalWrite(Buzzer, LOW);            
 }
 
+void printDebugInfo() {
+    Serial.print("[TIME] Current: ");
+    Serial.print(millis() / 1000.0, 1);
+    Serial.print("s | Start at: ");
+    Serial.print(sittingStartTime / 1000.0, 1);
+    Serial.print("s | Duration: ");
+    Serial.print(sittingDurationMinutes);
+    Serial.print(" min ");
+    
+    Serial.print("|| [SENSOR] Max FSR: ");
+    Serial.print(maxFsrValue);
+    Serial.print(" | Pressure: ");
+    Serial.print(pressurePsi, 2);
+    Serial.print(" PSI || State: ");
+    
+    switch(CurrentState) {
+        case StateIdle:    Serial.println("IDLE"); break;
+        case StateNormal:  Serial.println("NORMAL"); break;
+        case StateWarning: Serial.println("WARNING"); break;
+        case StateDanger:  Serial.print("DANGER (Step "); Serial.print(dangerStep); Serial.println(")"); break;
+    }
+}
+
 void setup() {
     Serial.begin(115200);
 
@@ -127,20 +150,19 @@ void loop() {
             CurrentState = StateIdle;
         }
 
+        printDebugInfo();
+
         switch(CurrentState){
             case StateIdle:
-                Serial.println("[STATUS]: IDLE");
                 allsensor_off(); 
                 break;
 
             case StateNormal:
-                Serial.println("[STATUS]: NORMAL");
                 digitalWrite(RelayCh1_Airpump, HIGH);
                 digitalWrite(RelayCh1_Valve, HIGH);   
                 break;
 
             case StateWarning:
-                Serial.println("[STATUS]: WARNING");
                 if (pressurePsi < 1.0) { 
                     digitalWrite(RelayCh1_Airpump, LOW); 
                 } 
@@ -151,8 +173,6 @@ void loop() {
                 break;
 
             case StateDanger:
-                Serial.println("[STATUS]: DANGER");
-                
                 if (dangerStep == 0) {
                     digitalWrite(RelayCh1_Valve, LOW);   
                     digitalWrite(RelayCh1_Airpump, HIGH); 
