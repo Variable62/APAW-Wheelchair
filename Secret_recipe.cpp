@@ -1,4 +1,8 @@
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
 #include <Wire.h>
+
+Adafruit_MPU6050 mpu;
 
 const int MUX_SIG            = A0;   
 const int MUX_S0             = 8;    
@@ -18,6 +22,9 @@ const int adcMax             = 921;
 int     fsrValues[6]         = {0, 0, 0, 0, 0, 0};
 int     maxFsrValue          = 0;
 float   pressurePsi          = 0.0;
+float   angleX               = 0.0;
+float   angleY               = 0.0;
+bool    mpuAvailable         = false; 
 
 unsigned long sittingStartTime = 0;
 unsigned long sittingDurationMinutes = 0;
@@ -65,6 +72,16 @@ void ReadPressureSensor(){
     pressurePsi = map(constrainedValue, adcMin, adcMax, PressureMinPsi, PressureMaxPsi);
 }
 
+void ReadMPU6050(){
+    if (!mpuAvailable) return; 
+    
+    sensors_event_t a, g, temp;
+    mpu.getEvent(&a, &g, &temp);
+
+    angleX = atan2(a.acceleration.y, a.acceleration.z) * 180.0 / PI;
+    angleY = atan2(-a.acceleration.x, sqrt(a.acceleration.y * a.acceleration.y + a.acceleration.z * a.acceleration.z)) * 180.0 / PI;
+}
+
 void TrackSittingTime(){
     if (maxFsrValue > 200) { 
         if (!Siting) {
@@ -75,6 +92,30 @@ void TrackSittingTime(){
     } else {
         Siting = false;
         sittingDurationMinutes = 0; 
+    }
+}
+
+void CheckTiltAndStateAlarm(){
+    if (CurrentState != StateIdle) {
+        if (mpuAvailable && (abs(angleX) > 20.0 || abs(angleY) > 20.0)) { 
+            if (millis() - buzzerMillis >= 300) { 
+                buzzerMillis = millis();
+                buzzerState = !buzzerState;
+                digitalWrite(Buzzer, buzzerState); 
+            }
+        } 
+        else if (CurrentState == StateWarning) {
+            if (millis() - buzzerMillis >= 500) { 
+                buzzerMillis = millis();
+                buzzerState = !buzzerState;
+                digitalWrite(Buzzer, buzzerState); 
+            }
+        } 
+        else {
+            digitalWrite(Buzzer, LOW); 
+        }
+    } else {
+        digitalWrite(Buzzer, LOW); 
     }
 }
 
@@ -93,7 +134,15 @@ void printDebugInfo() {
     Serial.print(sittingDurationMinutes);
     Serial.print(" min ");
     
-    Serial.print("|| [SENSOR] Max FSR: ");
+    Serial.print("|| [MPU] ");
+    if(mpuAvailable) {
+        Serial.print("X: "); Serial.print(angleX, 1);
+        Serial.print("° Y: "); Serial.print(angleY, 1); Serial.print("°");
+    } else {
+        Serial.print("NOT FOUND");
+    }
+    
+    Serial.print(" || [SENSOR] Max FSR: ");
     Serial.print(maxFsrValue);
     Serial.print(" | Pressure: ");
     Serial.print(pressurePsi, 2);
@@ -121,6 +170,18 @@ void setup() {
     pinMode(Buzzer, OUTPUT);
 
     allsensor_off(); 
+
+    Serial.println("Initializing MPU6050...");
+    if (!mpu.begin(0x68, &Wire1)) {
+        Serial.println("[WARN] MPU6050 not found on Wire1. Bypassing...");
+        mpuAvailable = false;
+    } else {
+        Serial.println("[OK] MPU6050 Initialized successfully.");
+        mpuAvailable = true;
+        mpu.setAccelerometerRange(MPU6050_RANGE_2_G);
+        mpu.setGyroRange(MPU6050_RANGE_250_DEG);
+        mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+    }
 }
 
 void loop() {
@@ -131,6 +192,7 @@ void loop() {
 
         ReadFSRSensorWithMux();
         ReadPressureSensor();
+        ReadMPU6050();
         TrackSittingTime();
 
         if (maxFsrValue > 800 && sittingDurationMinutes >= 120) {
@@ -150,6 +212,7 @@ void loop() {
             CurrentState = StateIdle;
         }
 
+        CheckTiltAndStateAlarm();
         printDebugInfo();
 
         switch(CurrentState){
