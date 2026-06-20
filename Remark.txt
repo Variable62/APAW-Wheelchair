@@ -1,0 +1,3 @@
+URL : AKfycbxGWNSJWiGxKVNCvAXHx2ToU1QC8p8liMhZMrARfoGPSFbX7KFzUGaPXff7vQfmtait
+
+Date / Month /Year	State	FSR1	FSR2	FSR3	FSR4	FSR5	FSR6	Status Air pump	Status Valve	Led_Normal	Led_Warning	Led_Danger
