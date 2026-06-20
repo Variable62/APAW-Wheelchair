@@ -1,8 +1,4 @@
-#include <Adafruit_MPU6050.h>
-#include <Adafruit_Sensor.h>
 #include <Wire.h>
-
-Adafruit_MPU6050 mpu;
 
 const int MUX_SIG            = A0;   
 const int MUX_S0             = 8;    
@@ -22,8 +18,7 @@ const int adcMax             = 921;
 int     fsrValues[6]         = {0, 0, 0, 0, 0, 0};
 int     maxFsrValue          = 0;
 float   pressurePsi          = 0.0;
-float   angleX               = 0.0;
-float   angleY               = 0.0;
+float   maxFsrMmHg           = 0.0; 
 
 unsigned long sittingStartTime = 0;
 unsigned long sittingDurationMinutes = 0;
@@ -51,7 +46,7 @@ void SelectMUXCh(int CH){
     digitalWrite(MUX_S1 , (CH & 2));
     digitalWrite(MUX_S2 , (CH & 4));
     digitalWrite(MUX_S3 , (CH & 8));
-    delayMicroseconds(20); 
+    delayMicroseconds(100); 
 }
 
 void ReadFSRSensorWithMux(){
@@ -63,6 +58,7 @@ void ReadFSRSensorWithMux(){
             maxFsrValue = fsrValues[i];
         }
     }
+    maxFsrMmHg = (maxFsrValue / 1023.0) * 120.0; 
 }
 
 void ReadPressureSensor(){
@@ -71,15 +67,8 @@ void ReadPressureSensor(){
     pressurePsi = map(constrainedValue, adcMin, adcMax, PressureMinPsi, PressureMaxPsi);
 }
 
-void ReadMPU6050(){
-    sensors_event_t a, g, temp;
-    mpu.getEvent(&a, &g, &temp);
-    angleX = atan2(a.acceleration.y, a.acceleration.z) * 180.0 / PI;
-    angleY = atan2(-a.acceleration.x, sqrt(a.acceleration.y * a.acceleration.y + a.acceleration.z * a.acceleration.z)) * 180.0 / PI;
-}
-
 void TrackSittingTime(){
-    if (maxFsrValue > 200) { 
+    if (maxFsrMmHg >= 32.0) { 
         if (!Siting) {
             sittingStartTime = millis(); 
             Siting = true;
@@ -91,25 +80,23 @@ void TrackSittingTime(){
     }
 }
 
-void CheckTiltAlarmName(){
+void CheckStateAlarm(){
     if (CurrentState != StateIdle) {
-        if (abs(angleX) > 20.0 || abs(angleY) > 20.0) { 
-            if (millis() - buzzerMillis >= 300) { 
-                buzzerMillis = millis();
-                buzzerState = !buzzerState;
-                digitalWrite(Buzzer, buzzerState); 
-            }
-        } 
-        else if (CurrentState == StateWarning) {
+        if (CurrentState == StateWarning) {
             if (millis() - buzzerMillis >= 500) { 
                 buzzerMillis = millis();
                 buzzerState = !buzzerState;
                 digitalWrite(Buzzer, buzzerState); 
             }
         } 
+        else if (CurrentState == StateDanger) {
+            digitalWrite(Buzzer, HIGH); 
+        }
         else {
             digitalWrite(Buzzer, LOW); 
         }
+    } else {
+        digitalWrite(Buzzer, LOW); 
     }
 }
 
@@ -117,6 +104,20 @@ void allsensor_off(){
     digitalWrite(RelayCh1_Airpump, HIGH); 
     digitalWrite(RelayCh1_Valve, HIGH);    
     digitalWrite(Buzzer, LOW);            
+}
+
+void printDebugInfo() {
+    Serial.print("[TIME] Duration: "); Serial.print(sittingDurationMinutes); Serial.print(" min ");
+    Serial.print("|| [FSR] Max: "); Serial.print(maxFsrValue);
+    Serial.print(" ("); Serial.print(maxFsrMmHg, 1); Serial.print(" mmHg) ");
+    Serial.print("|| [AIR] "); Serial.print(pressurePsi, 2); Serial.print(" PSI || State: ");
+    
+    switch(CurrentState) {
+        case StateIdle:    Serial.println("IDLE"); break;
+        case StateNormal:  Serial.println("NORMAL (Safe)"); break;
+        case StateWarning: Serial.println("WARNING (120 min)"); break;
+        case StateDanger:  Serial.println("DANGER (150 min)"); break;
+    }
 }
 
 void setup() {
@@ -132,20 +133,7 @@ void setup() {
     pinMode(RelayCh1_Valve , OUTPUT);    
     pinMode(Buzzer, OUTPUT);
 
-    Serial.println("Initializing MPU6050...");
     allsensor_off(); 
-
-    if (!mpu.begin()) {
-        Serial.println("Failed to find MPU6050 chip! Please check your wiring.");
-        while (1) {
-            delay(10); 
-        }
-    }
-    Serial.println("MPU6050 Found and Initialized successfully!");
-
-    mpu.setAccelerometerRange(MPU6050_RANGE_2_G);
-    mpu.setGyroRange(MPU6050_RANGE_250_DEG);
-    mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
 }
 
 void loop() {
@@ -156,42 +144,39 @@ void loop() {
 
         ReadFSRSensorWithMux();
         ReadPressureSensor();
-        ReadMPU6050();
         TrackSittingTime();
 
-        if (maxFsrValue > 800 && sittingDurationMinutes >= 120) {
+        if (maxFsrValue < 100) { 
+            CurrentState = StateIdle;
+        }
+        else if (maxFsrMmHg >= 32.0 && sittingDurationMinutes >= 150) {
             if (CurrentState != StateDanger) {
                 CurrentState = StateDanger;
                 dangerStep = 0; 
                 dangerActionMillis = millis();
             }
         }
-        else if (maxFsrValue > 200 && sittingDurationMinutes >= 30) {
+        else if (maxFsrMmHg >= 32.0 && sittingDurationMinutes >= 120) {
             CurrentState = StateWarning;
         }
-        else if (maxFsrValue > 200 && sittingDurationMinutes < 30) {
+        else {
             CurrentState = StateNormal;
         }
-        else {
-            CurrentState = StateIdle;
-        }
 
-        CheckTiltAlarmName();
+        CheckStateAlarm();
+        printDebugInfo();
 
         switch(CurrentState){
             case StateIdle:
-                Serial.println("[STATUS]: IDLE");
                 allsensor_off(); 
                 break;
 
             case StateNormal:
-                Serial.println("[STATUS]: NORMAL");
                 digitalWrite(RelayCh1_Airpump, HIGH);
                 digitalWrite(RelayCh1_Valve, HIGH);   
                 break;
 
             case StateWarning:
-                Serial.println("[STATUS]: WARNING");
                 if (pressurePsi < 1.0) { 
                     digitalWrite(RelayCh1_Airpump, LOW); 
                 } 
@@ -202,12 +187,9 @@ void loop() {
                 break;
 
             case StateDanger:
-                Serial.println("[STATUS]: DANGER");
-                
                 if (dangerStep == 0) {
                     digitalWrite(RelayCh1_Valve, LOW);   
                     digitalWrite(RelayCh1_Airpump, HIGH); 
-                    
                     if (millis() - dangerActionMillis >= 5000 || pressurePsi <= 0.5) {
                         dangerStep = 1; 
                         dangerActionMillis = millis(); 
@@ -216,7 +198,6 @@ void loop() {
                 else if (dangerStep == 1) {
                     digitalWrite(RelayCh1_Valve, HIGH);   
                     digitalWrite(RelayCh1_Airpump, LOW);  
-                    
                     if (pressurePsi >= 1.3) {
                         dangerStep = 0; 
                         dangerActionMillis = millis();
