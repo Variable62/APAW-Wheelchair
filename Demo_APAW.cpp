@@ -81,23 +81,25 @@ void TrackSittingTime(){
 }
 
 void CheckStateAlarm(){
-    if (CurrentState != StateIdle) {
-        if (CurrentState == StateWarning) {
-            if (millis() - buzzerMillis >= 500) { 
-                buzzerMillis = millis();
-                buzzerState = !buzzerState;
-                digitalWrite(Buzzer, buzzerState); 
-            }
-        } 
-        else if (CurrentState == StateDanger) {
-            digitalWrite(Buzzer, HIGH); 
+    static SystemState lastState = StateIdle;
+    
+    if (CurrentState == StateWarning) {
+        if (millis() - buzzerMillis >= 500) { 
+            buzzerMillis = millis();
+            buzzerState = !buzzerState;
+            digitalWrite(Buzzer, buzzerState); 
         }
-        else {
-            digitalWrite(Buzzer, LOW); 
-        }
-    } else {
-        digitalWrite(Buzzer, LOW); 
+    } 
+    else if (CurrentState == StateDanger) {
+        digitalWrite(Buzzer, HIGH); 
     }
+    else {
+        if (lastState == StateWarning || lastState == StateDanger || digitalRead(Buzzer) == HIGH) {
+            digitalWrite(Buzzer, LOW);
+        }
+    }
+    
+    lastState = CurrentState; 
 }
 
 void allsensor_off(){
@@ -107,7 +109,6 @@ void allsensor_off(){
 }
 
 void printDebugInfo() {
-    // 1. แสดงค่าดิบของ FSR ทุกช่องแยกกัน (FSR1 - FSR6)
     Serial.print("[FSR Raw Values] ");
     for(int i = 0; i < 6; i++) {
         Serial.print("CH"); Serial.print(i+1); Serial.print(":"); Serial.print(fsrValues[i]);
@@ -115,19 +116,16 @@ void printDebugInfo() {
     }
     Serial.println();
 
-    // 2. แสดงค่าสรุปภาพรวมระบบและสถานะฮาร์ดแวร์ Relay ต่างๆ
     Serial.print(" -> [SUMMARY] Max FSR: "); Serial.print(maxFsrValue);
     Serial.print(" ("); Serial.print(maxFsrMmHg, 1); Serial.print(" mmHg)");
     
     Serial.print(" || Air Pressure: "); Serial.print(pressurePsi, 2); Serial.print(" PSI");
     Serial.print(" || Duration: "); Serial.print(sittingDurationMinutes); Serial.print(" min");
     
-    // แสดงสถานะ Relay (LOW = รีเลย์ทำงาน/เปิดอุปกรณ์, HIGH = ปิดอุปกรณ์)
     Serial.print(" || PUMP: "); Serial.print(digitalRead(RelayCh1_Airpump) == LOW ? "ON" : "OFF");
     Serial.print(" | VALVE: "); Serial.print(digitalRead(RelayCh1_Valve) == LOW ? "ON" : "OFF");
     Serial.print(" | BUZZER: "); Serial.print(digitalRead(Buzzer) == HIGH ? "ON" : "OFF");
     
-    // แสดง State ล่าสุดของระบบ
     Serial.print(" || SYSTEM STATE: ");
     switch(CurrentState) {
         case StateIdle:    Serial.println("IDLE"); break;
