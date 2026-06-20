@@ -7,7 +7,7 @@ const int MUX_S0             = 8;
 const int MUX_S1             = 9;    
 const int MUX_S2             = 10;  
 const int MUX_S3             = 11;   
-const int Pressure_Sensor    = A2;    
+const int Pressure_Sensor    = A2;   
 const int RelayCh1_Airpump   = 3;    
 const int RelayCh1_Valve     = 4;    
 const int Buzzer             = 2;    
@@ -18,14 +18,14 @@ const int adcMin             = 102;
 const int adcMax             = 921;   
 
 int     fsrValues[6]         = {0, 0, 0, 0, 0, 0};
-int     maxFsrValue          = 0;                  
+int     maxFsrValue          = 0;                   
 float   pressurePsi          = 0.0;                
 float   maxFsrMmHg           = 0.0;              
 
 unsigned long sittingStartTime = 0;          
 unsigned long sittingDurationMinutes = 0;    
 bool          Siting           = false;     
-char          startTimeStr[30] = "N/A";      
+char          startTimeStr[30] = "N/A";     
 
 float         sessionMaxFsr    = 0.0;        
 float         sessionMaxPsi    = 0.0;        
@@ -144,12 +144,24 @@ void allsensor_off(){
 }
 
 void updateCloudVariables() {
-    led_normal  = (CurrentState == StateNormal);
-    led_warning = (CurrentState == StateWarning);
-    led_danger  = (CurrentState == StateDanger);
+    if (CurrentState == StateIdle)         state = "IDLE";
+    else if (CurrentState == StateNormal)  state = "NORMAL";
+    else if (CurrentState == StateWarning) state = "WARNING";
+    else if (CurrentState == StateDanger)  state = "DANGER";
+
+    fsr1 = fsrValues[0];
+    fsr2 = fsrValues[1];
+    fsr3 = fsrValues[2];
+    fsr4 = fsrValues[3];
+    fsr5 = fsrValues[4];
+    fsr6 = fsrValues[5];
 
     pump_status  = (digitalRead(RelayCh1_Airpump) == LOW); 
     valve_status = (digitalRead(RelayCh1_Valve) == LOW);
+
+    led_normal  = (CurrentState == StateNormal);
+    led_warning = (CurrentState == StateWarning);
+    led_danger  = (CurrentState == StateDanger);
 }
 
 void setup() {
