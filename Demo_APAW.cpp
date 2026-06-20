@@ -8,7 +8,7 @@ const int MUX_S3             = 11;
 const int Pressure_Sensor    = A2;   
 const int RelayCh1_Airpump   = 3;    
 const int RelayCh1_Valve     = 4;    
-const int Buzzer             = 2;    
+const int Buzzer             = 5;    
 
 const float PressureMaxPsi   = 5.0;   
 const float PressureMinPsi   = 0.0;
@@ -81,31 +81,30 @@ void TrackSittingTime(){
 }
 
 void CheckStateAlarm(){
-    static SystemState lastState = StateIdle;
-    
     if (CurrentState == StateWarning) {
         if (millis() - buzzerMillis >= 500) { 
             buzzerMillis = millis();
             buzzerState = !buzzerState;
-            digitalWrite(Buzzer, buzzerState); 
+            
+            if (buzzerState) {
+                tone(Buzzer, 2000); 
+            } else {
+                noTone(Buzzer);     
+            }
         }
     } 
     else if (CurrentState == StateDanger) {
-        digitalWrite(Buzzer, HIGH); 
+        tone(Buzzer, 2500); 
     }
     else {
-        if (lastState == StateWarning || lastState == StateDanger || digitalRead(Buzzer) == HIGH) {
-            digitalWrite(Buzzer, LOW);
-        }
+        noTone(Buzzer);     
     }
-    
-    lastState = CurrentState; 
 }
 
 void allsensor_off(){
     digitalWrite(RelayCh1_Airpump, HIGH); 
     digitalWrite(RelayCh1_Valve, HIGH);    
-    digitalWrite(Buzzer, LOW);            
+    noTone(Buzzer);            
 }
 
 void printDebugInfo() {
@@ -134,6 +133,7 @@ void printDebugInfo() {
         case StateDanger:  Serial.println("DANGER (150 min)"); break;
     }
     Serial.println("------------------------------------------------------------------------------------------------------------------------");
+    delay(100);
 }
 
 void setup() {
