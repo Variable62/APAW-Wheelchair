@@ -1,61 +1,46 @@
 #include "thingProperties.h"
-#include <WiFi.h>
-#include <time.h>
 
 const int MUX_SIG            = A0;   
 const int MUX_S0             = 8;    
 const int MUX_S1             = 9;    
 const int MUX_S2             = 10;  
-const int MUX_S3             = 11;   
+const int MUX_S3             = 11;  
 const int Pressure_Sensor    = A2;   
 const int RelayCh1_Airpump   = 3;    
 const int RelayCh1_Valve     = 4;    
 const int Buzzer             = 2;    
 
 const float PressureMaxPsi   = 5.0;   
-const float PressureMinPsi   = 0.0;   
-const int adcMin             = 102;  
-const int adcMax             = 921;   
+const float PressureMinPsi   = 0.0;
+const int adcMin             = 102;
+const int adcMax             = 921; 
 
 int     fsrValues[6]         = {0, 0, 0, 0, 0, 0};
-int     maxFsrValue          = 0;                   
-float   pressurePsi          = 0.0;                
-float   maxFsrMmHg           = 0.0;              
+int     maxFsrValue          = 0;
+float   pressurePsi          = 0.0;
+float   maxFsrMmHg           = 0.0; 
 
-unsigned long sittingStartTime = 0;          
-unsigned long sittingDurationMinutes = 0;    
-bool          Siting           = false;     
-char          startTimeStr[30] = "N/A";     
+unsigned long sittingStartTime = 0;
+unsigned long sittingDurationMinutes = 0;
+bool            Siting            = false;
 
-float         sessionMaxFsr    = 0.0;        
-float         sessionMaxPsi    = 0.0;        
-String        sessionMaxState  = "NORMAL";   
+unsigned long   previousMillis  = 0;
+const long      interval        = 100;  
+unsigned long   buzzerMillis    = 0;
+bool            buzzerState     = false;
 
-unsigned long previousMillis   = 0;
-const long    interval         = 100;        
-unsigned long buzzerMillis     = 0;
-bool          buzzerState      = false;
-
-unsigned long dangerActionMillis = 0;        
-int           dangerStep         = 0;        
+unsigned long   dangerActionMillis = 0;
+int             dangerStep         = 0; 
 
 enum SystemState {
-    StateIdle,    
-    StateNormal,    
-    StateWarning,   
-    StateDanger     
+    StateIdle,
+    StateNormal,
+    StateWarning,
+    StateDanger
 };
 
 SystemState CurrentState = StateIdle; 
-
-String getThaiTime() {
-    time_t now = time(nullptr);
-    struct tm* timeinfo = localtime(&now);
-    char buf[40];
-  
-    strftime(buf, sizeof(buf), "%d/%m/%Y %H:%M:%S", timeinfo);
-    return String(buf);
-}
+SystemState LastState    = StateIdle; 
 
 void SelectMUXCh(int CH){
     digitalWrite(MUX_S0 , (CH & 1));
@@ -71,7 +56,7 @@ void ReadFSRSensorWithMux(){
         SelectMUXCh(i);
         fsrValues[i] = analogRead(MUX_SIG); 
         if (fsrValues[i] > maxFsrValue) {
-            maxFsrValue = fsrValues[i]; 
+            maxFsrValue = fsrValues[i];
         }
     }
     maxFsrMmHg = (maxFsrValue / 1023.0) * 120.0; 
@@ -79,89 +64,92 @@ void ReadFSRSensorWithMux(){
 
 void ReadPressureSensor(){
     float RawPressureSensor = analogRead(Pressure_Sensor);
-    int constrainedValue = constrain(RawPressureSensor, adcMin, adcMax); 
-    pressurePsi = map(constrainedValue, adcMin, adcMax, PressureMinPsi, PressureMaxPsi); 
+    int constrainedValue = constrain(RawPressureSensor, adcMin, adcMax);
+    pressurePsi = map(constrainedValue, adcMin, adcMax, PressureMinPsi, PressureMaxPsi);
 }
 
 void TrackSittingTime(){
-    if (maxFsrValue >= 100) {
+    if (maxFsrMmHg >= 32.0) { 
         if (!Siting) {
-            sittingStartTime = millis();
+            sittingStartTime = millis(); 
             Siting = true;
-            
-            String t = getThaiTime();
-            t.toCharArray(startTimeStr, 30);
-            
-            sessionMaxFsr = 0.0;
-            sessionMaxPsi = 0.0;
-            sessionMaxState = "NORMAL";
         }
         sittingDurationMinutes = (millis() - sittingStartTime) / 60000; 
-        
-        if (maxFsrMmHg > sessionMaxFsr) sessionMaxFsr = maxFsrMmHg;
-        if (pressurePsi > sessionMaxPsi) sessionMaxPsi = pressurePsi;
-        if (CurrentState == StateWarning && sessionMaxState != "DANGER") sessionMaxState = "WARNING";
-        if (CurrentState == StateDanger) sessionMaxState = "DANGER";
-        
     } else {
-        if (Siting) { 
-            sitting_log = String(startTimeStr) + "," + 
-                          String(sittingDurationMinutes) + "," + 
-                          String(sessionMaxFsr, 1) + "," + 
-                          String(sessionMaxPsi, 2) + "," + 
-                          sessionMaxState;
-                          
-            Siting = false;
-            sittingDurationMinutes = 0; 
-        }
+        Siting = false;
+        sittingDurationMinutes = 0; 
     }
 }
 
 void CheckStateAlarm(){
-    if (CurrentState != StateIdle) {
-        if (CurrentState == StateWarning) {
-            if (millis() - buzzerMillis >= 500) { 
-                buzzerMillis = millis();
-                buzzerState = !buzzerState;
-                digitalWrite(Buzzer, buzzerState); 
+    if (CurrentState == StateWarning) {
+        led_warning = true;
+        led_normal  = false;
+        led_danger  = false;
+        state       = "WARNING";
+
+        if (millis() - buzzerMillis >= 500) { 
+            buzzerMillis = millis();
+            buzzerState = !buzzerState;
+            if (buzzerState) {
+                tone(Buzzer, 2000); 
+            } else {
+                noTone(Buzzer);     
             }
-        } 
-        else if (CurrentState == StateDanger) {
-            digitalWrite(Buzzer, HIGH); 
         }
-        else {
-            digitalWrite(Buzzer, LOW); 
-        }
-    } else {
-        digitalWrite(Buzzer, LOW); 
+    } 
+    else if (CurrentState == StateDanger) {
+        led_danger  = true;
+        led_normal  = false;
+        led_warning = false;
+        state       = "DANGER";
+
+        tone(Buzzer, 2500); 
+    }
+    else if (CurrentState == StateNormal) {
+        led_normal  = true;
+        led_warning = false;
+        led_danger  = false;
+        state       = "NORMAL";
+
+        noTone(Buzzer);     
+    }
+    else { 
+        led_normal  = false;
+        led_warning = false;
+        led_danger  = false;
+        state       = "IDLE";
+
+        noTone(Buzzer);     
     }
 }
 
 void allsensor_off(){
     digitalWrite(RelayCh1_Airpump, HIGH); 
-    digitalWrite(RelayCh1_Valve, HIGH);   
-    digitalWrite(Buzzer, LOW);           
+    digitalWrite(RelayCh1_Valve, HIGH);    
+    noTone(Buzzer);            
 }
 
-void updateCloudVariables() {
-    if (CurrentState == StateIdle)         state = "IDLE";
-    else if (CurrentState == StateNormal)  state = "NORMAL";
-    else if (CurrentState == StateWarning) state = "WARNING";
-    else if (CurrentState == StateDanger)  state = "DANGER";
+void printDebugInfo() {
+    Serial.print("[FSR Raw Values] ");
+    for(int i = 0; i < 6; i++) {
+        Serial.print("CH"); Serial.print(i+1); Serial.print(":"); Serial.print(fsrValues[i]);
+        if(i < 5) Serial.print(" | ");
+    }
+    Serial.println();
 
-    fsr1 = fsrValues[0];
-    fsr2 = fsrValues[1];
-    fsr3 = fsrValues[2];
-    fsr4 = fsrValues[3];
-    fsr5 = fsrValues[4];
-    fsr6 = fsrValues[5];
-
-    pump_status  = (digitalRead(RelayCh1_Airpump) == LOW); 
-    valve_status = (digitalRead(RelayCh1_Valve) == LOW);
-
-    led_normal  = (CurrentState == StateNormal);
-    led_warning = (CurrentState == StateWarning);
-    led_danger  = (CurrentState == StateDanger);
+    Serial.print(" -> [SUMMARY] Max FSR: "); Serial.print(maxFsrValue);
+    Serial.print(" ("); Serial.print(maxFsrMmHg, 1); Serial.print(" mmHg)");
+    
+    Serial.print(" || Air Pressure: "); Serial.print(pressurePsi, 2); Serial.print(" PSI");
+    Serial.print(" || Duration: "); Serial.print(sittingDurationMinutes); Serial.print(" min");
+    
+    Serial.print(" || PUMP: "); Serial.print(digitalRead(RelayCh1_Airpump) == LOW ? "ON" : "OFF");
+    Serial.print(" | VALVE: "); Serial.print(digitalRead(RelayCh1_Valve) == LOW ? "ON" : "OFF");
+    
+    Serial.print(" || SYSTEM STATE: ");
+    Serial.println(state);
+    Serial.println("------------------------------------------------------------------------------------------------------------------------");
 }
 
 void setup() {
@@ -169,12 +157,10 @@ void setup() {
     delay(1500); 
 
     initProperties();
-    ArduinoCloud.begin(ArduinoIoTPreferredConnection); 
+    ArduinoCloud.begin(ArduinoIoTPreferredConnection);
     setDebugMessageLevel(2);
     ArduinoCloud.printDebugInfo();
 
-    configTime(7 * 3600, 0, "pool.ntp.org", "time.nist.gov");
-  
     pinMode(Pressure_Sensor, INPUT);
     pinMode(MUX_SIG, INPUT);        
     pinMode(MUX_S0, OUTPUT);
@@ -189,61 +175,80 @@ void setup() {
 }
 
 void loop() {
-    ArduinoCloud.update(); 
-    
+    ArduinoCloud.update();
     unsigned long currentMillis = millis();
 
     if (currentMillis - previousMillis >= interval) {
         previousMillis = currentMillis;
 
-        ReadFSRSensorWithMux(); 
-        ReadPressureSensor();   
-        TrackSittingTime();     
+        ReadFSRSensorWithMux();
+        ReadPressureSensor();
+        TrackSittingTime();
+
+        fsr1 = fsrValues[0];
+        fsr2 = fsrValues[1];
+        fsr3 = fsrValues[2];
+        fsr4 = fsrValues[3];
+        fsr5 = fsrValues[4];
+        fsr6 = fsrValues[5];
 
         if (maxFsrValue < 100) { 
-            CurrentState = StateIdle; 
+            CurrentState = StateIdle;
         }
         else if (maxFsrMmHg >= 32.0 && sittingDurationMinutes >= 150) {
             if (CurrentState != StateDanger) {
-                CurrentState = StateDanger; 
+                CurrentState = StateDanger;
                 dangerStep = 0; 
                 dangerActionMillis = millis();
             }
         }
         else if (maxFsrMmHg >= 32.0 && sittingDurationMinutes >= 120) {
-            CurrentState = StateWarning; 
+            CurrentState = StateWarning;
         }
         else {
-            CurrentState = StateNormal; 
+            CurrentState = StateNormal;
         }
 
-        CheckStateAlarm();      
-        updateCloudVariables(); 
+        CheckStateAlarm();
+        printDebugInfo();
+
+        if (CurrentState != LastState) {
+            LastState = CurrentState;
+        }
 
         switch(CurrentState){
             case StateIdle:
                 allsensor_off(); 
+                pump_status = false;
+                valve_status = false;
                 break;
 
             case StateNormal:
-                digitalWrite(RelayCh1_Airpump, HIGH); 
+                digitalWrite(RelayCh1_Airpump, HIGH);
                 digitalWrite(RelayCh1_Valve, HIGH);   
+                pump_status = false;
+                valve_status = false;
                 break;
 
             case StateWarning:
                 if (pressurePsi < 1.0) { 
                     digitalWrite(RelayCh1_Airpump, LOW); 
+                    pump_status = true;
                 } 
                 else if (pressurePsi >= 1.4) {
-                    digitalWrite(RelayCh1_Airpump, HIGH);
+                    digitalWrite(RelayCh1_Airpump, HIGH); 
+                    pump_status = false;
                 }
                 digitalWrite(RelayCh1_Valve, HIGH); 
+                valve_status = false;
                 break;
 
             case StateDanger:
                 if (dangerStep == 0) {
                     digitalWrite(RelayCh1_Valve, LOW);   
                     digitalWrite(RelayCh1_Airpump, HIGH); 
+                    valve_status = true;
+                    pump_status = false;
                     if (millis() - dangerActionMillis >= 5000 || pressurePsi <= 0.5) {
                         dangerStep = 1; 
                         dangerActionMillis = millis(); 
@@ -252,6 +257,8 @@ void loop() {
                 else if (dangerStep == 1) {
                     digitalWrite(RelayCh1_Valve, HIGH);   
                     digitalWrite(RelayCh1_Airpump, LOW);  
+                    valve_status = false;
+                    pump_status = true;
                     if (pressurePsi >= 1.3) {
                         dangerStep = 0; 
                         dangerActionMillis = millis();
@@ -261,3 +268,16 @@ void loop() {
         }
     }
 }
+
+void onLedDangerChange() {}
+void onLedNormalChange() {}
+void onLedWarningChange() {}
+void onPumpStatusChange() {}
+void onValveStatusChange() {}
+void onStateChange() {}
+void onFsr1Change() {}
+void onFsr2Change() {}
+void onFsr3Change() {}
+void onFsr4Change() {}
+void onFsr5Change() {}
+void onFsr6Change() {}
