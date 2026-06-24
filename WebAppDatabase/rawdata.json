@@ -1,0 +1,17 @@
+{
+  "state":"WARNING",
+  "pressure":1.25,
+
+  "fsr1":250,
+  "fsr2":260,
+  "fsr3":270,
+  "fsr4":280,
+  "fsr5":290,
+  "fsr6":300,
+
+  "pump":"ON",
+  "valve":"OFF",
+
+  "gyx":5.2,
+  "gyy":3.1
+}
