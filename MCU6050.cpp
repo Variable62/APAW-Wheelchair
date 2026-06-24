@@ -1,46 +1,39 @@
 #include <Wire.h>
-#include <Adafruit_MPU6050.h>
-#include <Adafruit_Sensor.h>
 
-Adafruit_MPU6050 mpu;
+int16_t AcX, AcY, AcZ;
 
 void setup() {
   Serial.begin(115200);
+  Wire.begin();
 
-  while (!Serial) {
-    delay(10);
-  }
-
-  if (!mpu.begin()) {
-    Serial.println("MPU6050 not found!");
-    while (1);
-  }
+  Wire.beginTransmission(0x68);
+  Wire.write(0x6B);
+  Wire.write(0);
+  Wire.endTransmission(true);
 
   Serial.println("MPU6050 Ready");
-
-  mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
-  mpu.setGyroRange(MPU6050_RANGE_500_DEG);
-  mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
 }
 
 void loop() {
-  sensors_event_t a, g, temp;
-  mpu.getEvent(&a, &g, &temp);
 
-  float ax = a.acceleration.x;
-  float ay = a.acceleration.y;
-  float az = a.acceleration.z;
+  Wire.beginTransmission(0x68);
+  Wire.write(0x3B);
+  Wire.endTransmission(false);
+  Wire.requestFrom(0x68, 6, true);
 
-  // คำนวณมุมเอียง
-  float angleX = atan2(ay, az) * 180.0 / PI;
-  float angleY = atan2(-ax, sqrt(ay * ay + az * az)) * 180.0 / PI;
+  AcX = Wire.read() << 8 | Wire.read();
+  AcY = Wire.read() << 8 | Wire.read();
+  AcZ = Wire.read() << 8 | Wire.read();
 
-  Serial.print("X: ");
-  Serial.print(angleX);
-  Serial.print(" deg");
+  float angleX = atan2(AcY, AcZ) * 180.0 / PI;
+  float angleY = atan2(-AcX, sqrt((long)AcY * AcY + (long)AcZ * AcZ)) * 180.0 / PI;
 
-  Serial.print("   Y: ");
-  Serial.print(angleY);
+  Serial.print("Angle X: ");
+  Serial.print(angleX, 1);
+  Serial.print(" deg\t");
+
+  Serial.print("Angle Y: ");
+  Serial.print(angleY, 1);
   Serial.println(" deg");
 
   delay(100);
