@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>APAW Wheelchair Dashboard</title>
+
+    <link rel="stylesheet" href="style.css">
+
+</head>
+
+<body>
+
+    <div class="container">
+
+        <header>
+
+            <h1>🦽 APAW Wheelchair Dashboard</h1>
+
+            <p>Real-Time Pressure Monitoring System</p>
+
+        </header>
+
+
+        <!-- ========================= -->
+        <!-- Current Status -->
+        <!-- ========================= -->
+
+        <section class="status-card">
+
+            <h2>Current Status</h2>
+
+            <div class="status-grid">
+
+                <div class="item">
+                    <span>State</span>
+                    <strong id="state">-</strong>
+                </div>
+
+                <div class="item">
+                    <span>Pressure</span>
+                    <strong id="pressure">-</strong>
+                </div>
+
+                <div class="item">
+                    <span>Air Pump</span>
+                    <strong id="pump">-</strong>
+                </div>
+
+                <div class="item">
+                    <span>Valve</span>
+                    <strong id="valve">-</strong>
+                </div>
+
+                <div class="item">
+                    <span>GyX</span>
+                    <strong id="gyx">-</strong>
+                </div>
+
+                <div class="item">
+                    <span>GyY</span>
+                    <strong id="gyy">-</strong>
+                </div>
+
+                <div class="item full">
+
+                    <span>Last Update</span>
+
+                    <strong id="lastUpdate">-</strong>
+
+                </div>
+
+            </div>
+
+        </section>
+
+        <section class="table-card">
+
+            <h2>History</h2>
+
+            <div class="table-wrapper">
+
+                <table id="historyTable">
+
+                    <thead>
+
+                        <tr>
+
+                            <th>Date</th>
+                            <th>Time</th>
+                            <th>State</th>
+                            <th>Pressure</th>
+
+                            <th>FSR1</th>
+                            <th>FSR2</th>
+                            <th>FSR3</th>
+                            <th>FSR4</th>
+                            <th>FSR5</th>
+                            <th>FSR6</th>
+
+                            <th>Pump</th>
+                            <th>Valve</th>
+
+                            <th>GyX</th>
+                            <th>GyY</th>
+
+                        </tr>
+
+                    </thead>
+
+                    <tbody id="tableBody">
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        </section>
+
+    </div>
+
+    <script src="config.js"></script>
+    <script src="script.js"></script>
+
+</body>
+
+</html>
