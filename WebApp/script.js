@@ -20,7 +20,6 @@ async function loadData() {
             console.log("No data");
 
             return;
-
         }
 
         updateCurrentStatus(data[0]);
