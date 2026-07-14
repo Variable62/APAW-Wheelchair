@@ -11,6 +11,8 @@ const int RelayCh1_Airpump   = 3;
 const int RelayCh1_Valve     = 4;    
 const int Buzzer             = 2;    
 
+const float TargetPressure = 3.0; 
+
 const float PressureMaxPsi   = 5.0;   
 const float PressureMinPsi   = 0.0;
 const int adcMin             = 102;
@@ -249,7 +251,7 @@ void loop() {
             fsr5 = (fsrValues[4] / 1023.0) * 120.0;
             fsr6 = (fsrValues[5] / 1023.0) * 120.0;
             Gyx  = angleX;
-            GyY  = angleX;
+            GyY  = angleY;
             
             LastState = CurrentState;
         }
@@ -269,17 +271,20 @@ void loop() {
                 break;
 
             case StateWarning:
-                if (pressurePsi < 1.0) { 
-                    digitalWrite(RelayCh1_Airpump, LOW); 
-                    pump_status = true;
-                } 
-                else if (pressurePsi >= 1.4) {
-                    digitalWrite(RelayCh1_Airpump, HIGH); 
-                    pump_status = false;
-                }
-                digitalWrite(RelayCh1_Valve, HIGH); 
-                valve_status = false;
-                break;
+
+            if (pressurePsi < TargetPressure) {
+                digitalWrite(RelayCh1_Airpump, LOW);      // Pump ON
+                pump_status = true;
+            }
+            else {
+                digitalWrite(RelayCh1_Airpump, HIGH);     // Pump OFF
+                pump_status = false;
+            }
+
+            digitalWrite(RelayCh1_Valve, HIGH);           // Valve OFF
+            valve_status = false;
+
+            break;
 
             case StateDanger:
                 if (dangerStep == 0) {
@@ -287,21 +292,30 @@ void loop() {
                     digitalWrite(RelayCh1_Airpump, HIGH); 
                     valve_status = true;
                     pump_status = false;
-                    if (millis() - dangerActionMillis >= 5000 || pressurePsi <= 0.5) {
+                    if (millis() - dangerActionMillis >= 5000) {
                         dangerStep = 1; 
                         dangerActionMillis = millis(); 
                     }
                 } 
                 else if (dangerStep == 1) {
-                    digitalWrite(RelayCh1_Valve, HIGH);   
-                    digitalWrite(RelayCh1_Airpump, LOW);  
+
+                    digitalWrite(RelayCh1_Valve, HIGH);      // Valve OFF
                     valve_status = false;
+
+                    if (pressurePsi < TargetPressure) {
+
+                    digitalWrite(RelayCh1_Airpump, LOW); // Pump ON
                     pump_status = true;
-                    if (pressurePsi >= 1.3) {
-                        dangerStep = 0; 
-                        dangerActionMillis = millis();
-                    }
                 }
+                else {
+
+                    digitalWrite(RelayCh1_Airpump, HIGH); // Pump OFF
+                    pump_status = false;
+
+                    dangerStep = 0;
+                    dangerActionMillis = millis();
+                }
+            }
                 break;
 
             case StateTiltWarning:
