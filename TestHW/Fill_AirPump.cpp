@@ -1,50 +1,65 @@
-const int Pressure_Sensor    = A2;   
-const int RelayCh1_Airpump   = 3;    
-const int RelayCh1_Valve     = 4;    
+const int Pressure_Sensor  = A2;
+const int RelayCh1_Airpump = 3;
+const int RelayCh1_Valve   = 4;
 
-const float PressureMaxPsi   = 10.0;  
-const float PressureMinPsi   = 0.0;
-const int adcMin             = 102;   
-const int adcMax             = 921;   
+// Calibration
+const int adcMin = 102;
+const int adcMax = 921;
 
-const float TargetPressure   = 1;  //Magic number  
+const float PressureMinPsi = 0.0;
+const float PressureMaxPsi = 5.0;
+
+// Target
+const float TargetPressure = 3.0;
 
 float pressurePsi = 0.0;
-unsigned long previousMillis = 0;
-const long interval = 200;            
 
-void setup() {
-  Serial.begin(115200);
+void setup()
+{
+    Serial.begin(115200);
 
-  pinMode(Pressure_Sensor, INPUT);
-  pinMode(RelayCh1_Airpump, OUTPUT);
-  pinMode(RelayCh1_Valve, OUTPUT);
+    pinMode(Pressure_Sensor, INPUT);
+    pinMode(RelayCh1_Airpump, OUTPUT);
+    pinMode(RelayCh1_Valve, OUTPUT);
 
-  digitalWrite(RelayCh1_Airpump, HIGH); 
-  digitalWrite(RelayCh1_Valve, HIGH);    
+    digitalWrite(RelayCh1_Airpump, HIGH);
+    digitalWrite(RelayCh1_Valve, HIGH);
+
+    Serial.println("===== Air Pump Test =====");
 }
 
-void loop() {
-  unsigned long currentMillis = millis();
+void loop()
+{
+    int raw = analogRead(Pressure_Sensor);
 
-  if (currentMillis - previousMillis >= interval) {
-    previousMillis = currentMillis;
+    raw = constrain(raw, adcMin, adcMax);
 
-    float RawPressureSensor = analogRead(Pressure_Sensor);
-    int constrainedValue = constrain(RawPressureSensor, adcMin, adcMax);
-    pressurePsi = map(constrainedValue, adcMin, adcMax, PressureMinPsi, PressureMaxPsi);
+    pressurePsi =
+        PressureMinPsi +
+        ((float)(raw - adcMin) /
+        (adcMax - adcMin)) *
+        (PressureMaxPsi - PressureMinPsi);
 
-    Serial.print("Pressure: ");
-    Serial.print(pressurePsi);
-    Serial.println(" PSI");
+    Serial.print("RAW = ");
+    Serial.print(raw);
 
-    if (pressurePsi < TargetPressure) {
-      digitalWrite(RelayCh1_Airpump, LOW);  
-      digitalWrite(RelayCh1_Valve, HIGH);   
-    } 
-    else {
-      digitalWrite(RelayCh1_Airpump, HIGH); 
-      digitalWrite(RelayCh1_Valve, HIGH);   
+    Serial.print("   PSI = ");
+    Serial.print(pressurePsi, 2);
+
+    if (pressurePsi < TargetPressure)
+    {
+        digitalWrite(RelayCh1_Airpump, LOW);   // Pump ON
+        digitalWrite(RelayCh1_Valve, HIGH);    // Valve OFF
+
+        Serial.println("   --> Pump ON");
     }
-  }
+    else
+    {
+        digitalWrite(RelayCh1_Airpump, HIGH);  // Pump OFF
+        digitalWrite(RelayCh1_Valve, HIGH);    // Valve OFF
+
+        Serial.println("   --> Pump OFF");
+    }
+
+    delay(200);
 }

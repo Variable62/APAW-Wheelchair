@@ -10,12 +10,25 @@ float fsrMmHg[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
 unsigned long previousMillis = 0;
 const long interval = 100; 
 
-void selectMuxChannel(int channel) {
-  digitalWrite(MUX_S0, (channel & 1));
-  digitalWrite(MUX_S1, (channel & 2));
-  digitalWrite(MUX_S2, (channel & 4));
-  digitalWrite(MUX_S3, (channel & 8));
-  delayMicroseconds(100); 
+// ===== Average Analog Read =====
+int AverageAnalogRead(uint8_t pin, uint8_t samples = 5)
+{
+    long sum = 0;
+
+    for (uint8_t i = 0; i < samples; i++)
+    {
+        sum += analogRead(pin);
+    }
+
+    return sum / samples;
+}
+
+void SelectMUXCh(uint8_t ch){
+    digitalWrite(MUX_S0, bitRead(ch, 0));
+    digitalWrite(MUX_S1, bitRead(ch, 1));
+    digitalWrite(MUX_S2, bitRead(ch, 2));
+    digitalWrite(MUX_S3, bitRead(ch, 3));
+    delayMicroseconds(100);
 }
 
 void setup() {
@@ -37,11 +50,13 @@ void loop() {
   if (currentMillis - previousMillis >= interval) {
     previousMillis = currentMillis;
 
-    for (int i = 0; i < 6; i++) {
-      selectMuxChannel(i);                
-      fsrValues[i] = analogRead(MUX_SIG); 
-      fsrMmHg[i] = (fsrValues[i] / 1023.0) * 120.0;
-    }
+    // for (int i = 0; i < 6; i++) {
+    //   SelectMUXCh(i);     
+    //   analogRead(MUX_SIG);      // discard
+    //   delayMicroseconds(50);       
+    //   fsrValues[i] = AverageAnalogRead(MUX_SIG); 
+    //   fsrMmHg[i] = (fsrValues[i] / 1023.0) * 120.0;
+    // }
 
     Serial.print("[RAW] ");
     for (int i = 0; i < 6; i++) {
