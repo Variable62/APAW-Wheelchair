@@ -1,7 +1,7 @@
 #include <Wire.h>
 // Input pin
 const int MUX_SIG            = A0;   
-const int Pressure_Sensor    = A2;  
+const int Pressure_Sensor    = A4;  
 // Output pin
 const int MUX_S0             = 8;  
 const int MUX_S1             = 9;    
@@ -13,10 +13,7 @@ const int Buzzer             = 7;
 
 // Condition variables
 const float TargetPressure   = 3.0; 
-const float PressureMaxPsi   = 5.0;   
-const float PressureMinPsi   = 0.0;
-const int adcMin             = 102;
-const int adcMax             = 921; 
+const float OffSet = 0.479;         
 
 int     fsrValues[6]         = {0, 0, 0, 0, 0, 0};
 float   fsrMmHg[6]           = {0.0,0.0,0.0,0.0,0.0,0.0};
@@ -25,17 +22,21 @@ int     maxFsrValue          = 0;
 float   pressurePsi          = 0.0;
 float   maxFsrMmHg           = 0.0; 
 
-unsigned long sittingStartTime       = 0;
-unsigned long sittingDurationMinutes = 0;
-bool          Sitting                 = false;
+unsigned long   sittingStartTime       = 0;
+unsigned long   sittingDurationMinutes = 0;
+bool            Sitting                 = false;
 
-unsigned long previousMillis  = 0;
-const long    interval        = 1000;  
-unsigned long buzzerMillis    = 0;
-bool          buzzerState     = false;
+unsigned long   previousMillis  = 0;
+const long      interval        = 1000;  
+unsigned long   buzzerMillis    = 0;
+bool            buzzerState     = false;
 
-unsigned long dangerActionMillis = 0;
-int           dangerStep         = 0; 
+unsigned long   dangerActionMillis = 0;
+int             dangerStep         = 0; 
+
+int             pressureADC = 0;
+float           pressureVoltage = 0;
+
 //-----------------------Constant value--------------
 const float PressureThreshold = 32.0; //mmHg
 const unsigned long WarningTime = 1; //minute
@@ -102,11 +103,18 @@ void ReadFSRSensorWithMux()
     maxFsrMmHg = (maxFsrValue / 1023.0) * 120.0;
 }
 
-void ReadPressureSensor(){
-    float RawPressureSensor = AverageAnalogRead(Pressure_Sensor);
-    int constrainedValue = constrain(RawPressureSensor, adcMin, adcMax);
-    
-    pressurePsi = PressureMinPsi + ((float)(constrainedValue - adcMin) / (float)(adcMax - adcMin)) * (PressureMaxPsi - PressureMinPsi);
+void ReadPressureSensor()
+{
+    pressureADC = AverageAnalogRead(Pressure_Sensor);
+
+    pressureVoltage = pressureADC * 5.0 / 1023.0;
+
+    float pressureMPa = (pressureVoltage - OffSet) * (1.6 / 4.0);
+
+    if (pressureMPa < 0)
+        pressureMPa = 0;
+
+    pressurePsi = pressureMPa * 145.038;
 }
 
 void TrackSittingTime(){
@@ -173,9 +181,15 @@ void printDebugInfo()
 
     Serial.println();
 
-    Serial.print("Pressure : ");
+    Serial.print("ADC : ");
+    Serial.print(pressureADC);
+
+    Serial.print("  Voltage : ");
+    Serial.print(pressureVoltage, 3);
+
+    Serial.print(" V  Pressure : ");
     Serial.print(pressurePsi, 2);
-    Serial.print(" PSI");
+    Serial.println(" PSI");
 
     Serial.print(" | Sitting : ");
     Serial.print(sittingDurationMinutes);
@@ -206,6 +220,7 @@ void UpdateSensorData()
 
 void setup() {
     Serial.begin(115200);
+    analogReadResolution(10);
     delay(1500); 
 
     pinMode(Pressure_Sensor, INPUT);
@@ -274,15 +289,15 @@ void loop() {
 
             case StateWarning:
                 if (pressurePsi < TargetPressure) {
-                    digitalWrite(RelayCh1_Airpump, LOW);      // Pump ON
+                    digitalWrite(RelayCh1_Airpump, HIGH);      
                     pump_status = true;
                 }
                 else {
-                    digitalWrite(RelayCh1_Airpump, LOW);     // Pump OFF
+                    digitalWrite(RelayCh1_Airpump, LOW);     
                     pump_status = false;
                 }
 
-                digitalWrite(RelayCh1_Valve, HIGH);           // Valve OFF
+                digitalWrite(RelayCh1_Valve, HIGH);         
                 valve_status = false;
                 break;
 
@@ -298,15 +313,15 @@ void loop() {
                     }
                 } 
                 else if (dangerStep == 1) {
-                    digitalWrite(RelayCh1_Valve, HIGH);      // Valve OFF
+                    digitalWrite(RelayCh1_Valve, LOW);     
                     valve_status = false;
 
                     if (pressurePsi < TargetPressure) {
-                        digitalWrite(RelayCh1_Airpump, LOW); // Pump ON
+                        digitalWrite(RelayCh1_Airpump, HIGH);
                         pump_status = true;
                     }
                     else {
-                        digitalWrite(RelayCh1_Airpump, HIGH); // Pump OFF
+                        digitalWrite(RelayCh1_Airpump, LOW);
                         pump_status = false;
 
                         dangerStep = 0;

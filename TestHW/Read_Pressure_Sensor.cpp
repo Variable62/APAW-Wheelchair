@@ -1,50 +1,32 @@
-const int pressurePin = A2;
-
-const float sensorMaxPsi = 150.0; 
-const float sensorMinPsi = 0.0;   
-
-const int adcMin = 102; 
-const int adcMax = 92;
-
-
-unsigned long previousMillis = 0;
-const long interval = 500; 
+const int PressurePin = A4;
+const float OffSet = 0.50;
 
 void setup() {
-
   Serial.begin(115200);
-  while (!Serial) {
-;
-  }
-  
-  Serial.println("--- Pressure Sensor Reading Initialized ---");
+  analogReadResolution(10);
 }
 
 void loop() {
 
-  unsigned long currentMillis = millis();
+  int adc = analogRead(PressurePin);
+  float voltage = adc * 5.0 / 1023.0;
 
+  float pressureMPa = (voltage - OffSet) * (1.6 / 4.0);
+  
+  if (pressureMPa < 0)
+    pressureMPa = 0;
 
-  if (currentMillis - previousMillis >= interval) {
-    previousMillis = currentMillis; 
+  float pressurePSI = pressureMPa * 145.038;
 
-    int rawValue = analogRead(pressurePin);
+  Serial.print("ADC : ");
+  Serial.print(adc);
 
-    float voltage = (rawValue * 5.0) / 1023.0;
+  Serial.print("   Voltage : ");
+  Serial.print(voltage, 3);
+  Serial.print(" V");
 
-    int constrainedValue = constrain(rawValue, adcMin, adcMax);
-    float pressurePsi = map(constrainedValue, adcMin, adcMax, sensorMinPsi, sensorMaxPsi);
+  Serial.print("   PSI : ");
+  Serial.println(pressurePSI, 2);
 
-    float pressureBar = pressurePsi * 0.0689476;
-
-    Serial.print("Raw ADC: ");
-    Serial.print(rawValue);
-    Serial.print(" | Voltage: ");
-    Serial.print(voltage, 2);
-    Serial.print("V | Pressure: ");
-    Serial.print(pressurePsi, 1);
-    Serial.print(" PSI (");
-    Serial.print(pressureBar, 2);
-    Serial.println(" Bar)");
-  }
+  delay(500);
 }
