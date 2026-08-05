@@ -7,8 +7,8 @@ const int MUX_S0             = 8;
 const int MUX_S1             = 9;    
 const int MUX_S2             = 10;  
 const int MUX_S3             = 11;  
-const int RelayCh1_Airpump   = 3;    
-const int RelayCh1_Valve     = 4;    
+const int RelayCh1_Airpump   = 4;    
+const int RelayCh1_Valve     = 3;    
 const int Buzzer             = 7;    
 
 // Condition variables
@@ -39,6 +39,7 @@ float           pressureVoltage = 0;
 
 //-----------------------Constant value--------------
 const float PressureThreshold = 32.0; //mmHg
+
 const unsigned long WarningTime = 1; //minute
 const unsigned long DangerTime = 4; //minute
 const unsigned long BuzzerInterval = 500;

@@ -1,32 +1,57 @@
-const int PressurePin = A4;
-const float OffSet = 0.50;
+const int Pressure_Sensor = A4;
+
+const float OffSet = 0.479;
+
+int pressureADC = 0;
+float pressureVoltage = 0;
+float pressurePsi = 0;
+
+int AverageAnalogRead(uint8_t pin, uint8_t samples = 50)
+{
+    long sum = 0;
+
+    for (uint8_t i = 0; i < samples; i++)
+    {
+        sum += analogRead(pin);
+    }
+
+    return sum / samples;
+}
+
+void ReadPressureSensor()
+{
+    pressureADC = AverageAnalogRead(Pressure_Sensor);
+
+    pressureVoltage = pressureADC * 5.0 / 16383.0;
+
+    // Datasheet : 0.5V = 0 MPa, 4.5V = 1.6 MPa
+    float pressureMPa = (pressureVoltage - OffSet) * (1.6 / 4.0);
+
+    if (pressureMPa < 0)
+        pressureMPa = 0;
+
+    pressurePsi = pressureMPa * 145.038;
+}
 
 void setup() {
   Serial.begin(115200);
-  analogReadResolution(10);
+  analogReadResolution(14);
 }
 
 void loop() {
 
-  int adc = analogRead(PressurePin);
-  float voltage = adc * 5.0 / 1023.0;
+ReadPressureSensor();
 
-  float pressureMPa = (voltage - OffSet) * (1.6 / 4.0);
-  
-  if (pressureMPa < 0)
-    pressureMPa = 0;
+Serial.print("ADC : ");
+Serial.print(pressureADC);
 
-  float pressurePSI = pressureMPa * 145.038;
+Serial.print("   Voltage : ");
+Serial.print(pressureVoltage, 3);
 
-  Serial.print("ADC : ");
-  Serial.print(adc);
+Serial.print(" V");
 
-  Serial.print("   Voltage : ");
-  Serial.print(voltage, 3);
-  Serial.print(" V");
+Serial.print("   Pressure : ");
+Serial.print(pressurePsi, 2);
 
-  Serial.print("   PSI : ");
-  Serial.println(pressurePSI, 2);
-
-  delay(500);
+Serial.println(" PSI");
 }
