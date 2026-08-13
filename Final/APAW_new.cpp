@@ -1,363 +1,618 @@
+/*
+*
+Buzzer : active LOW
+Relay Active LOW
+
+Upload code 
+USB = ถอด
+12V = เปิด
+รอแปบ
+USB = เสียบ
+ทำงานได้
+
+Hardware
+เริ่ม
+เติมลม 2 นาที
+-> พร้อมนั่ง (Idle)
+-> มีคนนั่ง (Normal)
+-> นั่งเกิน 30 นาที (Warning) Buzzer เตือน + เติมลม 2 นาที
+-> นั่งนานเกิน 60 นาที (Danger) Buzzer เตือน เปิดวาล + ปิดวาลว์ -> เติมลม 2 นาที loop ต่อไป จนกว่าจะเปลี่ยนลุกเปลี่ยนท่านั่ง
+Soft ware app 
+-Web App ของญาติเเละผู้ป่วย : ดูข้อมูลของ Wheel chair ตัวเองเเละทราบการเเจ้งเตือนและสถานะค่าต่างๆ (สามารถดูประวัติย้อนหลังได้)*/
+
 #include <Wire.h>
-//                  INPUT PIN
-const int MUX_SIG             = A0;
-const int Pressure_Sensor     = A4;
-//                  OUTPUT PIN
-const int MUX_S0              = 8;
-const int MUX_S1              = 9;
-const int MUX_S2              = 10;
-const int MUX_S3              = 11;
+#include <WiFiS3.h>
+#include <WiFiSSLClient.h>
+#include <WiFiUdp.h>
+#include <NTPClient.h>
 
-const int RelayCh1_Airpump    = 4;      // Active HIGH
-const int RelayCh1_Valve      = 3;      // Active HIGH
-const int Buzzer              = 7;      // Active LOW
-//                  CONSTANT
-const float TargetPressure      = 3.0;      // PSI
-const float PressureThreshold   = 32.0;     // mmHg
+const int MUX_SIG            = A0;
+const int MUX_S0             = 8;
+const int MUX_S1             = 9;
+const int MUX_S2             = 10;
+const int MUX_S3             = 11;
 
-const float Offset              = 0.479;
+const int RelayCh1_Airpump   = 3;
+const int RelayCh1_Valve     = 4;
+const int Buzzer             = 5;
 
-const unsigned long FSRAlertTime      = 5UL * 60UL * 1000UL;      // 5 นาที
-const unsigned long SittingAlertTime  = 20UL * 60UL * 1000UL;     // 20 นาที
+int fsrValues[6] = {0, 0, 0, 0, 0, 0};
+float fsrMmHg[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
 
-const unsigned long DebugInterval      = 1000;
-const unsigned long FirebaseInterval   = 500;
-const float PressureLow  = 2.8;   
-const float PressureHigh = 3.2;   
-//                  SYSTEM STATE
-enum SystemState
-{
-    StateBeforeSitting,
-    StateReadyForSit,
-    StateMonitoring,
-    StatePressureControl,
-    StateAlert,
-    StateStandUp
+int maxFsrValue = 0;
+float maxFsrMmHg = 0.0;
+
+unsigned long sittingStartTime = 0;
+unsigned long sittingDurationMinutes = 0;
+bool Sitting = false;
+
+unsigned long previousMillis = 0;
+const unsigned long interval = 1000;
+
+unsigned long buzzerMillis = 0;
+bool buzzerState = false;
+
+unsigned long dangerActionMillis = 0;
+unsigned long warningPumpStartMillis = 0;
+
+int dangerStep = 0;
+
+const float PressureThreshold = 32.0;
+
+const unsigned long WarningTime = 30;
+const unsigned long DangerTime = 60;
+const unsigned long BuzzerInterval = 500;
+
+const unsigned long WarningPumpTime = 120000;
+const unsigned long PrePumpTime = 120000;
+unsigned long prePumpStartMillis = 0;
+
+const char* currentStateStr = "IDLE";
+
+
+const char* WIFI_SSID = "USER";
+const char* WIFI_PASSWORD = "PASSWORD";
+
+const char* FIREBASE_HOST =
+    "apaw-wheelchair-default-rtdb.asia-southeast1.firebasedatabase.app";
+
+const unsigned long FirebaseInterval = 1000;
+unsigned long previousFirebaseMillis = 0;
+
+WiFiSSLClient firebaseClient;
+
+
+WiFiUDP ntpUDP;
+
+NTPClient timeClient(
+    ntpUDP,
+    "pool.ntp.org",
+    7 * 3600,
+    60000
+);
+
+float fsr1 = 0.0;
+float fsr2 = 0.0;
+float fsr3 = 0.0;
+float fsr4 = 0.0;
+float fsr5 = 0.0;
+float fsr6 = 0.0;
+
+bool pump_status = false;
+bool valve_status = false;
+
+enum SystemState {
+    StatePrePump,
+    StateIdle,
+    StateNormal,
+    StateWarning,
+    StateDanger
 };
 
-SystemState CurrentState = StateBeforeSitting;
-SystemState LastState    = StateBeforeSitting;
+SystemState CurrentState = StatePrePump;
+SystemState LastState = StatePrePump;
 
-//              SENSOR VARIABLE
-int         fsrValues[6];
-float       fsrMmHg[6];
-int         maxFsrIndex = 0;
-float       maxFsrValue = 0;
-int         pressureADC = 0;
-float       pressureVoltage = 0;
-float       pressurePsi = 0;
-
-//              TIMER VARIABLE
-unsigned long previousDebugMillis = 0;
-unsigned long previousFirebaseMillis = 0;
-unsigned long sittingStartMillis = 0;
-unsigned long dominantFSRStartMillis = 0;
-unsigned long buzzerMillis = 0;
-
-//              USER STATUS
-bool userSitting = false;
-bool pressureReady = false;
-bool pumpStatus = false;
-bool valveStatus = false;
-bool buzzerStatus = false;
-
-//              DOMINANT FSR
-int dominantFSR = -1;
-int previousDominantFSR = -1;
-
-//              DISPLAY STRING
-String currentStateString = "BEFORE_SITTING";
-String currentMessage = "";
-
-void StatePressureControl()
+void ConnectWiFi()
 {
-    currentStateString = "PRESSURE_CONTROL";
-    currentMessage = "Adjusting Pressure";
+    Serial.print("Connecting WiFi");
 
-    digitalWrite(RelayCh1_Valve, LOW);
-    valveStatus = false;
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
-    if (!userSitting)
+    unsigned long startMillis = millis();
+
+    while (WiFi.status() != WL_CONNECTED)
     {
-        CurrentState = StateStandUp;
+        delay(500);
+        Serial.print(".");
+
+        if (millis() - startMillis >= 20000)
+        {
+            Serial.println();
+            Serial.println("WiFi connection timeout");
+            return;
+        }
+    }
+
+    Serial.println();
+    Serial.println("WiFi connected");
+    Serial.print("IP: ");
+    Serial.println(WiFi.localIP());
+}
+String GetDate()
+{
+    time_t rawTime = timeClient.getEpochTime();
+
+    struct tm *timeInfo = localtime(&rawTime);
+
+    char buffer[11];
+
+    sprintf(
+        buffer,
+        "%02d/%02d/%04d",
+        timeInfo->tm_mday,
+        timeInfo->tm_mon + 1,
+        timeInfo->tm_year + 1900
+    );
+
+    return String(buffer);
+}
+
+String GetTime()
+{
+    time_t rawTime = timeClient.getEpochTime();
+
+    struct tm *timeInfo = localtime(&rawTime);
+
+    char buffer[9];
+
+    sprintf(
+        buffer,
+        "%02d:%02d:%02d",
+        timeInfo->tm_hour,
+        timeInfo->tm_min,
+        timeInfo->tm_sec
+    );
+
+    return String(buffer);
+}
+void UploadDashboard()
+{
+    if (WiFi.status() != WL_CONNECTED)
+    {
+        Serial.println("Firebase: WiFi disconnected");
         return;
     }
 
-    if (pressurePsi < PressureHigh)
+    String json = "{";
+
+    json += "\"state\":\"";
+    json += currentStateStr;
+    json += "\",";
+
+    json += "\"message\":\"";
+    
+    if (CurrentState == StateIdle)
     {
-        digitalWrite(RelayCh1_Airpump, HIGH);
-        pumpStatus = true;
+        json += "Ready for sit";
+    }
+    else if (CurrentState == StateNormal)
+    {
+        json += "Normal";
+    }
+    else if (CurrentState == StateWarning)
+    {
+        json += "Please change sitting position";
+    }
+    else if (CurrentState == StateDanger)
+    {
+        json += "Danger - Please change sitting position";
+    }
+    else if (CurrentState == StatePrePump)
+    {
+        json += "Preparing cushion";
     }
     else
     {
-        digitalWrite(RelayCh1_Airpump, LOW);
-        pumpStatus = false;
+        json += "";
+    }
 
-        CurrentState = StateMonitoring;
+    json += "\",";
+
+    json += "\"fsr1\":";
+    json += String(fsrMmHg[0], 1);
+    json += ",";
+
+    json += "\"fsr2\":";
+    json += String(fsrMmHg[1], 1);
+    json += ",";
+
+    json += "\"fsr3\":";
+    json += String(fsrMmHg[2], 1);
+    json += ",";
+
+    json += "\"fsr4\":";
+    json += String(fsrMmHg[3], 1);
+    json += ",";
+
+    json += "\"fsr5\":";
+    json += String(fsrMmHg[4], 1);
+    json += ",";
+
+    json += "\"fsr6\":";
+    json += String(fsrMmHg[5], 1);
+    json += ",";
+
+    json += "\"pump\":";
+    json += pump_status ? "true" : "false";
+    json += ",";
+
+    json += "\"valve\":";
+    json += valve_status ? "true" : "false";
+    json += ",";
+
+    json += "\"sittingMinute\":";
+    json += String(sittingDurationMinutes);
+
+    json += "}";
+
+    String path = "/dashboard.json";
+
+    if (firebaseClient.connect(FIREBASE_HOST, 443))
+    {
+        firebaseClient.println("PUT " + path + " HTTP/1.1");
+        firebaseClient.println("Host: " + String(FIREBASE_HOST));
+        firebaseClient.println("Content-Type: application/json");
+        firebaseClient.print("Content-Length: ");
+        firebaseClient.println(json.length());
+        firebaseClient.println("Connection: close");
+        firebaseClient.println();
+        firebaseClient.println(json);
+
+        unsigned long timeout = millis();
+
+        while (firebaseClient.connected() &&
+               millis() - timeout < 3000)
+        {
+            while (firebaseClient.available())
+            {
+                String line = firebaseClient.readStringUntil('\n');
+
+                if (line.startsWith("HTTP/1.1"))
+                {
+                    Serial.print("Firebase: ");
+                    Serial.println(line);
+                }
+
+                timeout = millis();
+            }
+        }
+
+        firebaseClient.stop();
+    }
+    else
+    {
+        Serial.println("Firebase connection failed");
+    }
+}
+void UploadHistory()
+{
+    if (WiFi.status() != WL_CONNECTED)
+    {
+        Serial.println("History: WiFi disconnected");
+        return;
+    }
+
+    String json = "{";
+
+    // State
+    json += "\"state\":\"";
+    json += currentStateStr;
+    json += "\",";
+
+    // Message
+    json += "\"message\":\"";
+
+    if (CurrentState == StateIdle)
+    {
+        json += "Ready for sit";
+    }
+    else if (CurrentState == StateNormal)
+    {
+        json += "Normal";
+    }
+    else if (CurrentState == StateWarning)
+    {
+        json += "Please change sitting position";
+    }
+    else if (CurrentState == StateDanger)
+    {
+        json += "Danger - Please change sitting position";
+    }
+    else if (CurrentState == StatePrePump)
+    {
+        json += "Preparing cushion";
+    }
+    else
+    {
+        json += "";
+    }
+
+    json += "\",";
+
+    // FSR
+    json += "\"fsr1\":";
+    json += String(fsrMmHg[0], 1);
+    json += ",";
+
+    json += "\"fsr2\":";
+    json += String(fsrMmHg[1], 1);
+    json += ",";
+
+    json += "\"fsr3\":";
+    json += String(fsrMmHg[2], 1);
+    json += ",";
+
+    json += "\"fsr4\":";
+    json += String(fsrMmHg[3], 1);
+    json += ",";
+
+    json += "\"fsr5\":";
+    json += String(fsrMmHg[4], 1);
+    json += ",";
+
+    json += "\"fsr6\":";
+    json += String(fsrMmHg[5], 1);
+    json += ",";
+
+    // Pump
+    json += "\"pump\":";
+    json += pump_status ? "true" : "false";
+    json += ",";
+
+    // Valve
+    json += "\"valve\":";
+    json += valve_status ? "true" : "false";
+    json += ",";
+
+    // Sitting time
+    json += "\"sittingMinute\":";
+    json += String(sittingDurationMinutes);
+
+    json += "}";
+
+    // สร้าง ID ใหม่ทุกครั้ง
+    String recordID = "record_" + String(millis());
+
+    String path = "/history/" + recordID + ".json";
+
+    Serial.println();
+    Serial.println("Uploading History...");
+    Serial.print("Path: ");
+    Serial.println(path);
+
+    if (firebaseClient.connect(FIREBASE_HOST, 443))
+    {
+        firebaseClient.println("PUT " + path + " HTTP/1.1");
+        firebaseClient.println("Host: " + String(FIREBASE_HOST));
+        firebaseClient.println("Content-Type: application/json");
+
+        firebaseClient.print("Content-Length: ");
+        firebaseClient.println(json.length());
+
+        firebaseClient.println("Connection: close");
+        firebaseClient.println();
+
+        firebaseClient.println(json);
+
+        unsigned long timeout = millis();
+
+        while (firebaseClient.connected() &&
+               millis() - timeout < 3000)
+        {
+            while (firebaseClient.available())
+            {
+                String line =
+                    firebaseClient.readStringUntil('\n');
+
+                if (line.startsWith("HTTP/1.1"))
+                {
+                    Serial.print("History: ");
+                    Serial.println(line);
+                }
+
+                timeout = millis();
+            }
+        }
+
+        firebaseClient.stop();
+
+        Serial.println("History upload finished.");
+    }
+    else
+    {
+        Serial.println("History connection failed");
     }
 }
 
-//              SELECT MUX CHANNEL
-void SelectMUXChannel(uint8_t channel)
+void PrePump()
 {
-    digitalWrite(MUX_S0, bitRead(channel,0));
-    digitalWrite(MUX_S1, bitRead(channel,1));
-    digitalWrite(MUX_S2, bitRead(channel,2));
-    digitalWrite(MUX_S3, bitRead(channel,3));
+    currentStateStr = "PREPUMP";
+
+    digitalWrite(RelayCh1_Airpump, LOW);
+    digitalWrite(RelayCh1_Valve, HIGH);
+    digitalWrite(Buzzer, HIGH);
+
+    pump_status = true;
+    valve_status = false;
+
+    if (millis() - prePumpStartMillis >= PrePumpTime)
+    {
+        digitalWrite(RelayCh1_Airpump, HIGH);
+
+        pump_status = false;
+
+        CurrentState = StateIdle;
+    }
+}
+
+
+void SelectMUXCh(uint8_t ch)
+{
+    digitalWrite(MUX_S0, bitRead(ch, 0));
+    digitalWrite(MUX_S1, bitRead(ch, 1));
+    digitalWrite(MUX_S2, bitRead(ch, 2));
+    digitalWrite(MUX_S3, bitRead(ch, 3));
 
     delayMicroseconds(100);
 }
 
-int AverageAnalogRead(byte pin, byte samples = 5)
+int AverageAnalogRead(uint8_t pin, uint8_t samples = 5)
 {
     long sum = 0;
 
-    for(int i=0;i<samples;i++)
+    for (uint8_t i = 0; i < samples; i++)
     {
         sum += analogRead(pin);
     }
+
     return sum / samples;
 }
 
-void ReadFSR()
+void ReadFSRSensorWithMux()
 {
     maxFsrValue = 0;
-    maxFsrIndex = 0;
 
-    for(int i=0;i<6;i++)
+    for (uint8_t i = 0; i < 6; i++)
     {
-        SelectMUXChannel(i);
-        delayMicroseconds(300);
-        analogRead(MUX_SIG);       // Dummy Read
-        delayMicroseconds(300);
+        SelectMUXCh(i);
+
+        delayMicroseconds(500);
+
+        analogRead(MUX_SIG);
+
+        delayMicroseconds(500);
 
         fsrValues[i] = AverageAnalogRead(MUX_SIG);
+
         fsrMmHg[i] = (fsrValues[i] / 1023.0) * 120.0;
 
-        if(fsrMmHg[i] > maxFsrValue)
+        if (fsrValues[i] > maxFsrValue)
         {
-            maxFsrValue = fsrMmHg[i];
-            maxFsrIndex = i;
+            maxFsrValue = fsrValues[i];
         }
     }
+
+    maxFsrMmHg = (maxFsrValue / 1023.0) * 120.0;
 }
 
-void ReadPressure()
+void TrackSittingTime()
 {
-    pressureADC = AverageAnalogRead(Pressure_Sensor);
-
-    pressureVoltage = pressureADC * 5.0 / 1023.0;
-
-    float pressureMPa = (pressureVoltage - Offset) * (1.6 / 4.0);
-
-    if(pressureMPa < 0)
-        pressureMPa = 0;
-
-    pressurePsi = pressureMPa * 145.038;
-}
-void CheckUserSitting()
-{
-    if(maxFsrValue >= PressureThreshold)
+    if (maxFsrMmHg >= PressureThreshold)
     {
-        userSitting = true;
+        if (!Sitting)
+        {
+            sittingStartTime = millis();
+            Sitting = true;
+        }
+
+        sittingDurationMinutes =
+            (millis() - sittingStartTime) / 60000;
     }
     else
     {
-        userSitting = false;
+        Sitting = false;
+        sittingDurationMinutes = 0;
     }
 }
-void CheckPressureReady()
-{
-    pressureReady = (pressurePsi >= TargetPressure);
-}
-void FindDominantFSR()
-{
-    dominantFSR = maxFsrIndex;
-}
-void ReadAllSensor()
-{
-    ReadFSR();
-    ReadPressure();
-    CheckUserSitting();
-    CheckPressureReady();
-    FindDominantFSR();
-}
-void StateBeforeSitting()
-{
-    currentStateString = "BEFORE_SITTING";
 
-    if(!pressureReady)
+void CheckStateAlarm()
+{
+    if (CurrentState == StateWarning)
     {
-        digitalWrite(RelayCh1_Airpump, HIGH);     // Active HIGH
-        digitalWrite(RelayCh1_Valve, LOW);
+        currentStateStr = "WARNING";
 
-        pumpStatus = true;
-        valveStatus = false;
-
-        if(userSitting)
+        if (millis() - buzzerMillis >= BuzzerInterval)
         {
-            currentMessage = "Pressure is not ready";
+            buzzerMillis = millis();
+            buzzerState = !buzzerState;
 
-            digitalWrite(Buzzer, LOW);       
-            buzzerStatus = true;
+            if (buzzerState)
+            {
+                digitalWrite(Buzzer, LOW);
+            }
+            else
+            {
+                digitalWrite(Buzzer, HIGH);
+            }
         }
-        else
-        {
-            digitalWrite(Buzzer, HIGH);
-
-            buzzerStatus = false;
-        }
+    }
+    else if (CurrentState == StateDanger)
+    {
+        currentStateStr = "DANGER";
+        digitalWrite(Buzzer, LOW);
+    }
+    else if (CurrentState == StateNormal)
+    {
+        currentStateStr = "NORMAL";
+        digitalWrite(Buzzer, HIGH);
     }
     else
     {
-        digitalWrite(RelayCh1_Airpump, LOW);
-        pumpStatus = false;
+        currentStateStr = "IDLE";
         digitalWrite(Buzzer, HIGH);
-        buzzerStatus = false;
-        CurrentState = StateReadyForSit;
     }
 }
-void StateReadyForSit()
-{
-    currentStateString = "READY_FOR_SIT";
-    currentMessage = "Ready For Sit";
 
-    digitalWrite(RelayCh1_Airpump, LOW);
-    digitalWrite(RelayCh1_Valve, LOW);
+void AllSensorOff()
+{
+    digitalWrite(RelayCh1_Airpump, HIGH);
+    digitalWrite(RelayCh1_Valve, HIGH);
     digitalWrite(Buzzer, HIGH);
-
-    pumpStatus = false;
-    valveStatus = false;
-    buzzerStatus = false;
-
-    
-    if(userSitting)
-    {
-        sittingStartMillis = millis();
-        dominantFSRStartMillis = millis();
-        previousDominantFSR = dominantFSR;
-        CurrentState = StateMonitoring;
-    }
-}
-void StateMonitoring()
-{
-    currentStateString = "MONITORING";
-    currentMessage = "Monitoring...";
-
-    if (!userSitting)
-    {
-        CurrentState = StateStandUp;
-        return;
-    }
-
-    if (pressurePsi < PressureLow)
-    {
-        CurrentState = StatePressureControl;
-        return;
-    }
-
-    if (dominantFSR != previousDominantFSR)
-    {
-        previousDominantFSR = dominantFSR;
-        dominantFSRStartMillis = millis();
-    }
-
-    if (millis() - dominantFSRStartMillis >= FSRAlertTime)
-    {
-        CurrentState = StateAlert;
-        return;
-    }
-
-    if (millis() - sittingStartMillis >= SittingAlertTime)
-    {
-        CurrentState = StateAlert;
-        return;
-    }
 }
 
-void StateAlert()
+void UpdateSensorData()
 {
-    currentStateString = "ALERT";
-    currentMessage = "Please Change Sitting Position";
-
-    digitalWrite(Buzzer, LOW);
-
-    buzzerStatus = true;
-
-    if (!userSitting)
-    {
-        CurrentState = StateStandUp;
-        return;
-    }
-
-    if (dominantFSR != previousDominantFSR)
-    {
-        digitalWrite(Buzzer, HIGH);
-        buzzerStatus = false;
-
-        previousDominantFSR = dominantFSR;
-        dominantFSRStartMillis = millis();
-        sittingStartMillis = millis();
-        CurrentState = StateMonitoring;
-    }
+    fsr1 = (fsrValues[0] / 1023.0) * 120.0;
+    fsr2 = (fsrValues[1] / 1023.0) * 120.0;
+    fsr3 = (fsrValues[2] / 1023.0) * 120.0;
+    fsr4 = (fsrValues[3] / 1023.0) * 120.0;
+    fsr5 = (fsrValues[4] / 1023.0) * 120.0;
+    fsr6 = (fsrValues[5] / 1023.0) * 120.0;
 }
 
-void StateStandUp()
+void printDebugInfo()
 {
-    currentStateString = "STAND_UP";
-    currentMessage = "Stand Up";
+    Serial.print("[mmHg] ");
 
-    digitalWrite(Buzzer, HIGH);
-    digitalWrite(RelayCh1_Airpump, LOW);
-    digitalWrite(RelayCh1_Valve, LOW);
-
-    pumpStatus = false;
-    valveStatus = false;
-    buzzerStatus = false;
-    sittingStartMillis = 0;
-    dominantFSRStartMillis = 0;
-    previousDominantFSR = -1;
-    dominantFSR = -1;
-    CurrentState = StateBeforeSitting;
-}
-
-void PrintDebug()
-{
-    Serial.println();
-
-    Serial.print("State : ");
-    Serial.println(currentStateString);
-
-    Serial.print("Message : ");
-    Serial.println(currentMessage);
-
-    Serial.print("Pressure : ");
-    Serial.print(pressurePsi);
-    Serial.println(" PSI");
-
-    Serial.print("Dominant FSR : ");
-    Serial.println(dominantFSR + 1);
-
-    Serial.print("FSR : ");
-
-    for(int i=0;i<6;i++)
+    for (int i = 0; i < 6; i++)
     {
-        Serial.print(fsrMmHg[i],1);
-        Serial.print("  ");
+        Serial.print("FSR");
+        Serial.print(i + 1);
+        Serial.print(":");
+        Serial.print(fsrMmHg[i], 1);
+
+        if (i < 5)
+        {
+            Serial.print("\t");
+        }
     }
 
     Serial.println();
 
-    Serial.print("Pump : ");
-    Serial.println(pumpStatus);
+    Serial.print("Sitting : ");
+    Serial.print(sittingDurationMinutes);
+    Serial.print(" min");
 
-    Serial.print("Valve : ");
-    Serial.println(valveStatus);
+    Serial.print(" | Pump : ");
+    Serial.print(pump_status ? "ON" : "OFF");
 
-    Serial.print("Buzzer : ");
-    Serial.println(buzzerStatus);
+    Serial.print(" | Valve : ");
+    Serial.print(valve_status ? "ON" : "OFF");
 
-    Serial.println("----------------------------------------");
+    Serial.print(" | State : ");
+    Serial.println(currentStateStr);
+
+    Serial.println("---------------------------------------------");
 }
 
 void setup()
@@ -366,8 +621,11 @@ void setup()
 
     analogReadResolution(10);
 
+    delay(1500);
+    ConnectWiFi();
+timeClient.begin();
+timeClient.update();    
     pinMode(MUX_SIG, INPUT);
-    pinMode(Pressure_Sensor, INPUT);
 
     pinMode(MUX_S0, OUTPUT);
     pinMode(MUX_S1, OUTPUT);
@@ -379,56 +637,169 @@ void setup()
 
     pinMode(Buzzer, OUTPUT);
 
-    digitalWrite(RelayCh1_Airpump, LOW);
-    digitalWrite(RelayCh1_Valve, LOW);
-    digitalWrite(Buzzer, HIGH);
+    AllSensorOff();
 
-    CurrentState = StateBeforeSitting;
+    prePumpStartMillis = millis();
 
-    Serial.println("APAW System Ready");
+    Serial.println("System Ready");
 }
-
 void loop()
 {
-    ReadAllSensor();
+    unsigned long currentMillis = millis();
 
-    switch(CurrentState)
+    if (currentMillis - previousMillis >= interval)
     {
-        case StateBeforeSitting:
-            StateBeforeSitting();
+        previousMillis = currentMillis;
+
+        ReadFSRSensorWithMux();
+        TrackSittingTime();
+
+        if (CurrentState != StatePrePump)
+        {
+            if (maxFsrMmHg < 70)
+            {
+                CurrentState = StateIdle;
+            }
+            else if (maxFsrMmHg >= PressureThreshold &&
+                     sittingDurationMinutes >= DangerTime)
+            {
+                if (CurrentState != StateDanger)
+                {
+                    CurrentState = StateDanger;
+
+                    dangerStep = 0;
+
+                    dangerActionMillis = millis();
+                }
+            }
+            else if (maxFsrMmHg >= PressureThreshold &&
+                     sittingDurationMinutes >= WarningTime)
+            {
+                if (CurrentState != StateWarning)
+                {
+                    CurrentState = StateWarning;
+
+                    warningPumpStartMillis = millis();
+                }
+            }
+            else
+            {
+                CurrentState = StateNormal;
+            }
+        }
+
+        CheckStateAlarm();
+    
+bool stateChanged = false;
+
+if (CurrentState != LastState)
+{
+    stateChanged = true;
+    UpdateSensorData();
+}
+
+        switch (CurrentState)
+        {
+            case StatePrePump:
+
+                PrePump();
+
+                break;
+
+            case StateIdle:
+
+                AllSensorOff();
+
+                pump_status = false;
+                valve_status = false;
+
+                break;
+
+            case StateNormal:
+
+                digitalWrite(RelayCh1_Airpump, HIGH);
+                digitalWrite(RelayCh1_Valve, HIGH);
+
+                pump_status = false;
+                valve_status = false;
+
+                break;
+
+            case StateWarning:
+
+                digitalWrite(RelayCh1_Valve, HIGH);
+                valve_status = false;
+
+                if (millis() - warningPumpStartMillis < WarningPumpTime)
+                {
+                    digitalWrite(RelayCh1_Airpump, LOW);
+                    pump_status = true;
+                }
+                else
+                {
+                    digitalWrite(RelayCh1_Airpump, HIGH);
+                    pump_status = false;
+                }
+
+                break;
+
+            case StateDanger:
+
+            if (dangerStep == 0)
+            {
+                digitalWrite(RelayCh1_Valve, LOW);
+                digitalWrite(RelayCh1_Airpump, HIGH);
+
+                valve_status = true;
+                pump_status = false;
+
+                if (millis() - dangerActionMillis >= 5000)
+                {
+                    dangerStep = 1;
+                    dangerActionMillis = millis();
+                }
+            }
+
+            else if (dangerStep == 1)
+            {
+                digitalWrite(RelayCh1_Valve, HIGH);
+                valve_status = false;
+
+                if (millis() - dangerActionMillis < WarningPumpTime)
+                {
+                    digitalWrite(RelayCh1_Airpump, LOW);
+                    pump_status = true;
+                }
+                else
+                {
+                    digitalWrite(RelayCh1_Airpump, HIGH);
+                    pump_status = false;
+
+                    dangerStep = 0;
+                    dangerActionMillis = millis();
+                }
+            }
+
             break;
+        }
+        if (stateChanged)
+        {
+            if (CurrentState != StatePrePump &&
+                LastState != StatePrePump)
+            {
+                UploadHistory();
+            }
 
-        case StateReadyForSit:
-            StateReadyForSit();
-            break;
+            LastState = CurrentState;
+        }
 
-        case StateMonitoring:
-            StateMonitoring();
-            break;
+                printDebugInfo();
 
-        case StateAlert:
-            StateAlert();
-            break;
+                if (millis() - previousFirebaseMillis >= FirebaseInterval)
+                {
+                    previousFirebaseMillis = millis();
 
-        case StateStandUp:
-            StateStandUp();
-            break;
-        case StatePressureControl:
-            StatePressureControl();
-        break;
-    }
-
-    if(millis() - previousDebugMillis >= DebugInterval)
-    {
-        previousDebugMillis = millis();
-
-        PrintDebug();
-    }
-
-    if(millis() - previousFirebaseMillis >= FirebaseInterval)
-    {
-        previousFirebaseMillis = millis();
-
-        // UploadDashboard();
+                    UploadDashboard();
+                }
     }
 }

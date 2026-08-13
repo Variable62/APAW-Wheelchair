@@ -50,14 +50,16 @@ void loop() {
   if (currentMillis - previousMillis >= interval) {
     previousMillis = currentMillis;
 
-    // for (int i = 0; i < 6; i++) {
-    //   SelectMUXCh(i);     
-    //   analogRead(MUX_SIG);      // discard
-    //   delayMicroseconds(50);       
-    //   fsrValues[i] = AverageAnalogRead(MUX_SIG); 
-    //   fsrMmHg[i] = (fsrValues[i] / 1023.0) * 120.0;
-    // }
+    for (int i = 0; i < 6; i++) {
+      SelectMUXCh(i);     
+      analogRead(MUX_SIG);      // discard
+      delayMicroseconds(50);       
+      fsrValues[i] = AverageAnalogRead(MUX_SIG); 
+      fsrMmHg[i] = (fsrValues[i] / 1023.0) * 120.0;
+    }
+    
 
+    
     Serial.print("[RAW] ");
     for (int i = 0; i < 6; i++) {
       Serial.print("FSR"); Serial.print(i); Serial.print(":");
