@@ -70,8 +70,8 @@ unsigned long prePumpStartMillis = 0;
 const char* currentStateStr = "IDLE";
 
 
-const char* WIFI_SSID = "USER";
-const char* WIFI_PASSWORD = "PASSWORD";
+const char* WIFI_SSID = "USER"; // ใส่ชื่อไวไฟนะ
+const char* WIFI_PASSWORD = "PASSWORD"; // รหัส
 
 const char* FIREBASE_HOST =
     "apaw-wheelchair-default-rtdb.asia-southeast1.firebasedatabase.app";
