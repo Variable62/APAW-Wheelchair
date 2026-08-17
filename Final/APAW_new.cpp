@@ -79,7 +79,8 @@ const char* FIREBASE_HOST =
 const unsigned long FirebaseInterval = 1000;
 unsigned long previousFirebaseMillis = 0;
 
-WiFiSSLClient firebaseClient;
+WiFiSSLClient dashboardClient;
+WiFiSSLClient historyClient;
 
 
 WiFiUDP ntpUDP;
@@ -257,25 +258,25 @@ void UploadDashboard()
 
     String path = "/dashboard.json";
 
-    if (firebaseClient.connect(FIREBASE_HOST, 443))
+    if (dashboardClient.connect(FIREBASE_HOST, 443))
     {
-        firebaseClient.println("PUT " + path + " HTTP/1.1");
-        firebaseClient.println("Host: " + String(FIREBASE_HOST));
-        firebaseClient.println("Content-Type: application/json");
-        firebaseClient.print("Content-Length: ");
-        firebaseClient.println(json.length());
-        firebaseClient.println("Connection: close");
-        firebaseClient.println();
-        firebaseClient.println(json);
+        dashboardClient.println("PUT " + path + " HTTP/1.1");
+        dashboardClient.println("Host: " + String(FIREBASE_HOST));
+        dashboardClient.println("Content-Type: application/json");
+        dashboardClient.print("Content-Length: ");
+        dashboardClient.println(json.length());
+        dashboardClient.println("Connection: close");
+        dashboardClient.println();
+        dashboardClient.println(json);
 
         unsigned long timeout = millis();
 
-        while (firebaseClient.connected() &&
+        while (dashboardClient.connected() &&
                millis() - timeout < 3000)
         {
-            while (firebaseClient.available())
+            while (dashboardClient.available())
             {
-                String line = firebaseClient.readStringUntil('\n');
+                String line = dashboardClient.readStringUntil('\n');
 
                 if (line.startsWith("HTTP/1.1"))
                 {
@@ -287,7 +288,7 @@ void UploadDashboard()
             }
         }
 
-        firebaseClient.stop();
+        dashboardClient.stop();
     }
     else
     {
@@ -380,7 +381,6 @@ void UploadHistory()
 
     json += "}";
 
-    // สร้าง ID ใหม่ทุกครั้ง
     String recordID = "record_" + String(millis());
 
     String path = "/history/" + recordID + ".json";
@@ -390,29 +390,29 @@ void UploadHistory()
     Serial.print("Path: ");
     Serial.println(path);
 
-    if (firebaseClient.connect(FIREBASE_HOST, 443))
+    if (historyClient.connect(FIREBASE_HOST, 443))
     {
-        firebaseClient.println("PUT " + path + " HTTP/1.1");
-        firebaseClient.println("Host: " + String(FIREBASE_HOST));
-        firebaseClient.println("Content-Type: application/json");
+        historyClient.println("PUT " + path + " HTTP/1.1");
+        historyClient.println("Host: " + String(FIREBASE_HOST));
+        historyClient.println("Content-Type: application/json");
 
-        firebaseClient.print("Content-Length: ");
-        firebaseClient.println(json.length());
+        historyClient.print("Content-Length: ");
+        historyClient.println(json.length());
 
-        firebaseClient.println("Connection: close");
-        firebaseClient.println();
+        historyClient.println("Connection: close");
+        historyClient.println();
 
-        firebaseClient.println(json);
+        historyClient.println(json);
 
         unsigned long timeout = millis();
 
-        while (firebaseClient.connected() &&
+        while (historyClient.connected() &&
                millis() - timeout < 3000)
-        {
-            while (firebaseClient.available())
+        {       
+            while (historyClient.available())
             {
                 String line =
-                    firebaseClient.readStringUntil('\n');
+                    historyClient.readStringUntil('\n');
 
                 if (line.startsWith("HTTP/1.1"))
                 {
@@ -424,7 +424,7 @@ void UploadHistory()
             }
         }
 
-        firebaseClient.stop();
+        historyClient.stop();
 
         Serial.println("History upload finished.");
     }
@@ -656,7 +656,7 @@ void loop()
 
         if (CurrentState != StatePrePump)
         {
-            if (maxFsrMmHg < 70)
+            if (maxFsrMmHg < PressureThreshold)
             {
                 CurrentState = StateIdle;
             }
