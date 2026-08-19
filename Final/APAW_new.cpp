@@ -656,7 +656,7 @@ void loop()
 
         if (CurrentState != StatePrePump)
         {
-            if (maxFsrMmHg < PressureThreshold)
+            if (maxFsrMmHg < 70)
             {
                 CurrentState = StateIdle;
             }
@@ -793,7 +793,7 @@ if (CurrentState != LastState)
             LastState = CurrentState;
         }
 
-                printDebugInfo();
+                //printDebugInfo();
 
                 if (millis() - previousFirebaseMillis >= FirebaseInterval)
                 {
