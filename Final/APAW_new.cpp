@@ -77,6 +77,8 @@ const char* FIREBASE_HOST =
     "apaw-wheelchair-default-rtdb.asia-southeast1.firebasedatabase.app";
 
 const unsigned long FirebaseInterval = 1000;
+//const unsigned long FirebaseInterval = 5000;
+
 unsigned long previousFirebaseMillis = 0;
 
 WiFiSSLClient dashboardClient;
@@ -115,29 +117,64 @@ SystemState LastState = StatePrePump;
 
 void ConnectWiFi()
 {
-    Serial.print("Connecting WiFi");
+    Serial.println("Connecting WiFi");
 
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
-    unsigned long startMillis = millis();
+    unsigned long startAttempt = millis();
 
+    // รอเชื่อม Wi-Fi
     while (WiFi.status() != WL_CONNECTED)
     {
         delay(500);
         Serial.print(".");
 
-        if (millis() - startMillis >= 20000)
+        if (millis() - startAttempt > 20000)
         {
             Serial.println();
-            Serial.println("WiFi connection timeout");
+            Serial.println("WiFi connection timeout!");
             return;
         }
     }
 
     Serial.println();
     Serial.println("WiFi connected");
+
+    Serial.print("Waiting for IP");
+
+    unsigned long ipStart = millis();
+
+    while (WiFi.localIP() == IPAddress(0, 0, 0, 0))
+    {
+        delay(200);
+        Serial.print(".");
+
+        if (millis() - ipStart > 10000)
+        {
+            Serial.println();
+            Serial.println("ERROR: No IP address!");
+            return;
+        }
+    }
+
+    Serial.println();
+
+    IPAddress ip = WiFi.localIP();
+
     Serial.print("IP: ");
-    Serial.println(WiFi.localIP());
+    Serial.println(ip);
+
+    Serial.print("Gateway: ");
+    Serial.println(WiFi.gatewayIP());
+
+    Serial.print("Subnet: ");
+    Serial.println(WiFi.subnetMask());
+
+    Serial.print("RSSI: ");
+    Serial.print(WiFi.RSSI());
+    Serial.println(" dBm");
+
+    Serial.println("WiFi Ready");
 }
 String GetDate()
 {
@@ -178,11 +215,17 @@ String GetTime()
 }
 void UploadDashboard()
 {
-    if (WiFi.status() != WL_CONNECTED)
-    {
-        Serial.println("Firebase: WiFi disconnected");
-        return;
-    }
+if (WiFi.status() != WL_CONNECTED)
+{
+    Serial.println("Firebase: WiFi disconnected");
+    return;
+}
+
+if (WiFi.localIP() == IPAddress(0, 0, 0, 0))
+{
+    Serial.println("Firebase: No IP address");
+    return;
+}
 
     String json = "{";
 
@@ -297,11 +340,17 @@ void UploadDashboard()
 }
 void UploadHistory()
 {
-    if (WiFi.status() != WL_CONNECTED)
-    {
-        Serial.println("History: WiFi disconnected");
-        return;
-    }
+if (WiFi.status() != WL_CONNECTED)
+{
+    Serial.println("Firebase: WiFi disconnected");
+    return;
+}
+
+if (WiFi.localIP() == IPAddress(0, 0, 0, 0))
+{
+    Serial.println("Firebase: No IP address");
+    return;
+}
 
     String json = "{";
 
